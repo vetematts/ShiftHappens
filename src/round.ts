@@ -12,28 +12,48 @@
 
 export const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
-export const roles = [
-  { id: "barista", label: "Barista", colour: "#ff7aa8" },
-  { id: "kitchen", label: "Kitchen", colour: "#ffa53d" },
-  { id: "register", label: "Register", colour: "#3ec7b4" },
-] as const;
-export type Role = typeof roles[number]["id"];
-export const roleOf = (role: Role) => roles.find(entry => entry.id === role)!;
+/** Colours handed out to roles in order. Caps, name tags and board slots use them. */
+export const roleColours = ["#ff7aa8", "#ffa53d", "#3ec7b4", "#7c8cff"];
+/** A job on the team, such as barista or dentist. */
+export type Role = { id: string; label: string; colour: string };
+export const maxRoles = 4;
+/** The most people one shift can need, so the board stays readable. */
+export const maxPerShift = 4;
 
-/** The 14 slots of a week: Monday to Sunday mornings (0–6), then Monday to Sunday evenings (7–13). */
-export const shifts = (["AM", "PM"] as const).flatMap(half =>
-  days.map((day, i) => ({ day, dayIndex: i, half, label: `${day} ${half}` })),
-);
+/** The 14 shifts of a week: Monday to Sunday first shifts, then Monday to Sunday second shifts. */
+export const shifts = [0, 1].flatMap(half => days.map((day, dayIndex) => ({ day, dayIndex, half, label: `${day} ${half ? "PM" : "AM"}` })));
 
-/** An employee of the business, as entered in "Run it for real". Employees send requests; they are not the players. */
-export type Person = { name: string; role: Role; days: boolean[]; shifts: number };
-/** A team plus the role each shift needs (null when that shift isn't needed). */
-export type Team = { people: Person[]; week: (Role | null)[] };
+/** Someone on the team. */
+export type Person = { name: string; role: string; days: boolean[]; shifts: number };
+
+/** Everything needed to roster a week: the roles, the people and how many of each role every shift needs. */
+export type Team = {
+  /** Which starting point this came from (cafe, dental, salon or blank). */
+  kind: string;
+  roles: Role[];
+  /** What the two shifts in a day are called, such as AM and PM or 8–12 and 1–5. */
+  shiftNames: [string, string];
+  /** How many shifts one person can work in a day: 1, or 2 when people work full days. */
+  perDay: 1 | 2;
+  people: Person[];
+  /** For each of the 14 shifts, how many people of each role (by id) it needs. */
+  needs: Record<string, number>[];
+};
+
+/** One place to fill on the board: a role on a shift. */
+export type Slot = { shift: number; role: string };
 
 const workdays = (...list: number[]) => days.map((_, i) => list.includes(i));
+const allShifts = (need: (shift: number, day: number, half: number) => Record<string, number>) =>
+  shifts.map(({ dayIndex, half }, shift) => need(shift, dayIndex, half));
+const role = (id: string, label: string, colour: number): Role => ({ id, label, colour: roleColours[colour] });
 
-/** The café team used for quick play. */
+/** The café team used for quick play. There's enough slack that random choices still finish the week about 98% of the time. */
 export const sampleTeam: Team = {
+  kind: "cafe",
+  roles: [role("barista", "Barista", 0), role("kitchen", "Kitchen", 1), role("register", "Register", 2)],
+  shiftNames: ["AM", "PM"],
+  perDay: 1,
   people: [
     { name: "Jo", role: "barista", days: workdays(0, 1, 2, 3, 4), shifts: 3 },
     { name: "Rae", role: "barista", days: workdays(2, 3, 4, 5, 6), shifts: 3 },
@@ -47,11 +67,83 @@ export const sampleTeam: Team = {
     { name: "Bea", role: "register", days: workdays(1, 2, 3, 5, 6), shifts: 3 },
     { name: "Max", role: "register", days: workdays(0, 1, 2, 3, 4, 5, 6), shifts: 2 },
   ],
-  week: [
+  needs: [
     "barista", "kitchen", "register", "barista", "kitchen", "register", "barista",
     "kitchen", "register", "barista", "kitchen", "register", "barista", "kitchen",
-  ],
+  ].map(id => ({ [id]: 1 })),
 };
+
+const weekdays = workdays(0, 1, 2, 3, 4);
+
+/** Starting points for "Roster my team". Each is a full week that random choices still finish over 90% of the time, ready to edit. */
+export const templates: { id: string; label: string; blurb: string; icon: string; team: Team }[] = [
+  { id: "cafe", label: "Café", blurb: "Baristas, kitchen and register, open every day", icon: "☕", team: sampleTeam },
+  {
+    id: "dental", label: "Dental clinic", blurb: "Dentists, assistants and reception, weekdays", icon: "🦷",
+    team: {
+      kind: "dental",
+      roles: [role("dentist", "Dentist", 3), role("assistant", "Assistant", 2), role("reception", "Reception", 0)],
+      shiftNames: ["8–12", "1–5"],
+      perDay: 2,
+      people: [
+        { name: "Dr Lee", role: "dentist", days: workdays(0, 1, 2, 3), shifts: 8 },
+        { name: "Dr Patel", role: "dentist", days: workdays(1, 2, 3, 4), shifts: 8 },
+        { name: "Dr Wu", role: "dentist", days: workdays(0, 4), shifts: 4 },
+        { name: "Mia", role: "assistant", days: weekdays, shifts: 8 },
+        { name: "Noah", role: "assistant", days: weekdays, shifts: 8 },
+        { name: "Ivy", role: "assistant", days: workdays(0, 2, 4), shifts: 6 },
+        { name: "Zoe", role: "reception", days: weekdays, shifts: 8 },
+        { name: "Tom", role: "reception", days: weekdays, shifts: 8 },
+      ],
+      needs: allShifts((_, day): Record<string, number> => (day < 5 ? { dentist: 1, assistant: 1, reception: 1 } : {})),
+    },
+  },
+  {
+    id: "salon", label: "Hair salon", blurb: "Stylists and apprentices, busy Saturdays", icon: "💇",
+    team: {
+      kind: "salon",
+      roles: [role("stylist", "Stylist", 0), role("apprentice", "Apprentice", 1)],
+      shiftNames: ["9–1", "1–6"],
+      perDay: 2,
+      people: [
+        { name: "Kim", role: "stylist", days: workdays(1, 2, 3, 4, 5), shifts: 8 },
+        { name: "Ash", role: "stylist", days: workdays(1, 2, 3, 4, 5), shifts: 6 },
+        { name: "Lou", role: "stylist", days: workdays(2, 3, 4, 5), shifts: 6 },
+        { name: "Bo", role: "stylist", days: workdays(4, 5), shifts: 4 },
+        { name: "Pip", role: "apprentice", days: workdays(1, 2, 3, 4, 5), shifts: 8 },
+        { name: "Ren", role: "apprentice", days: workdays(1, 2, 3, 4, 5), shifts: 6 },
+      ],
+      needs: allShifts((_, day): Record<string, number> =>
+        (day === 5 ? { stylist: 2, apprentice: 1 } : day >= 1 && day <= 4 ? { stylist: 1, apprentice: 1 } : {})),
+    },
+  },
+  {
+    id: "blank", label: "Start from scratch", blurb: "Name your own roles and shifts", icon: "✏️",
+    team: {
+      kind: "blank",
+      roles: [role("staff", "Staff", 0)],
+      shiftNames: ["AM", "PM"],
+      perDay: 1,
+      people: [],
+      needs: shifts.map(() => ({})),
+    },
+  },
+];
+
+/** A role by id, or a grey stand-in if the team no longer has it. */
+export function roleIn(roles: Role[], id: string): Role {
+  return roles.find(entry => entry.id === id) ?? { id, label: "Unknown", colour: "#9b8b7a" };
+}
+
+export const shiftLabel = (shiftNames: [string, string], shift: number) =>
+  `${days[shift % 7]} ${shiftNames[shift < 7 ? 0 : 1]}`;
+
+/** Every place to fill this week, in board order: shift by shift, roles in team order. */
+export function slotsOf(team: Team): Slot[] {
+  return shifts.flatMap((_, shift) => team.roles.flatMap(({ id }) =>
+    Array.from({ length: Math.max(0, Math.floor(team.needs[shift]?.[id] ?? 0)) }, () => ({ shift, role: id })),
+  ).slice(0, maxPerShift));
+}
 
 /** Short form of someone's working days, such as "Mon–Fri" or "Mon, Wed–Thu". */
 export function dayRange(list: boolean[]) {
@@ -66,14 +158,19 @@ export function dayRange(list: boolean[]) {
   return parts.join(", ") || "No days";
 }
 
-/** For each needed shift, who on the team could work it. Used by "Run it for real" to warn about gaps. */
+/** Problems to fix before playing: places nobody could fill, and roles without enough shifts between them. */
 export function checkTeam(team: Team) {
-  const gaps = team.week.map((role, slot) => role && !team.people.some(person =>
-    person.role === role && person.days[slot % 7] && person.shifts > 0) ? slot : -1).filter(slot => slot >= 0);
-  const needed = team.week.filter(Boolean).length;
-  const hours = team.people.reduce((sum, person) => sum + Math.max(0, person.shifts), 0);
-  return { gaps, needed, hours };
+  const slots = slotsOf(team);
+  const gaps = slots.filter(({ shift, role: id }) => !team.people.some(person =>
+    person.role === id && person.days[shift % 7] && person.shifts > 0));
+  const short = team.roles.map(({ id, label }) => {
+    const need = slots.filter(slot => slot.role === id).length;
+    const have = team.people.filter(person => person.role === id).reduce((sum, person) => sum + Math.max(0, person.shifts), 0);
+    return { id, label, need, have };
+  }).filter(({ need, have }) => need > have);
+  return { slots, gaps, short, needed: slots.length };
 }
+
 
 // ---------------------------------------------------------------------------------------------------------------
 // Tuning: every number lives here so playtesting only touches this block.
@@ -278,8 +375,11 @@ export type Round = {
   nextSnatch: number;
   /** Which of the 14 slots the week needs. */
   needed: boolean[];
-  /** The role each slot needs, kept for the end-screen roster colours. Not used by the rules. */
-  week: (Role | null)[];
+  /** The team's roles and shift names, for colours and labels. The card rules don't check roles. */
+  roles: Role[];
+  shiftNames: [string, string];
+  /** The first role each of the 14 slots needs (for colour), or null when the slot isn't needed. */
+  slotRoles: (string | null)[];
   staff: Staff[];
   /** All cards ever made this round, indexed by id. Finished cards stay with `at.place === "gone"`. */
   cards: Card[];
@@ -419,6 +519,9 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
   const staff = people.map((person, id) => ({ ...person, days: [...person.days], id }));
   const roomStaff = shuffle(staff.map(person => person.id)).slice(0, settings.staffInRoom);
   const count = Math.max(1, Math.min(settings.maxPlayers, players));
+  // One card per shift: a shift is needed when the team needs anyone on it.
+  const places = slotsOf(team);
+  const slotRoles = shifts.map((_, shift) => places.find(place => place.shift === shift)?.role ?? null);
   return {
     phase: "ready",
     elapsed: 0,
@@ -426,8 +529,10 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     nextSpawn: 0,
     nextCancel: settings.busyAt + 4,
     nextSnatch: settings.busyAt + 8,
-    needed: team.week.map(role => role !== null),
-    week: [...team.week],
+    needed: slotRoles.map(role => role !== null),
+    roles: team.roles.map(entry => ({ ...entry })),
+    shiftNames: [...team.shiftNames],
+    slotRoles,
     staff,
     cards: [],
     board: shifts.map(() => undefined),

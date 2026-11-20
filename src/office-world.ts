@@ -28,8 +28,9 @@ const boardY = 1.72;
 const boardZ = -5.36;
 const boardWidth = 15.4;
 const boardHeight = 1.95;
+// Fredoka tops out at 700; the page loads it before the office is drawn
 const font = (weight: number, size: number) =>
-  `${weight} ${size}px ui-rounded, "SF Pro Rounded", Nunito, "Avenir Next", system-ui, sans-serif`;
+  `${Math.min(700, weight)} ${size}px "Fredoka Variable", ui-rounded, "SF Pro Rounded", Nunito, system-ui, sans-serif`;
 
 type Kind = typeof critterKinds[number];
 type Critter = ReturnType<typeof makeCritter>;

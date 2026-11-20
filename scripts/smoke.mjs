@@ -1,0 +1,136 @@
+/**
+ * Smoke test in a real browser: opens the built game in headless Edge/Chrome, starts a quick-play round,
+ * walks the duck around, and saves screenshots plus any console errors.
+ *
+ *   npm run build && node scripts/smoke.mjs [browser.exe] [outDir]
+ *
+ * Needs Node 22+ (global WebSocket). Screenshots go to `smoke-out/` (git-ignored) by default.
+ */
+import { spawn } from "node:child_process";
+import { mkdirSync, writeFileSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const browser = process.argv[2] ?? "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+const outDir = process.argv[3] ?? "smoke-out";
+const pagePort = 5199;
+const debugPort = 9333;
+mkdirSync(outDir, { recursive: true });
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const children = [];
+function run(command, args, options = {}) {
+  const child = spawn(command, args, { stdio: "ignore", shell: options.shell ?? false, ...options });
+  children.push(child);
+  return child;
+}
+function cleanup() {
+  for (const child of children) {
+    try {
+      if (process.platform === "win32") spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+      else child.kill("SIGKILL");
+    } catch { /* already gone */ }
+  }
+}
+process.on("exit", cleanup);
+
+async function waitFor(url, tries = 60) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return response;
+    } catch { /* not up yet */ }
+    await sleep(500);
+  }
+  throw new Error(`Timed out waiting for ${url}`);
+}
+
+run(process.execPath, ["node_modules/vite/bin/vite.js", "preview", "--host", "127.0.0.1", "--port", String(pagePort), "--strictPort"]);
+await waitFor(`http://127.0.0.1:${pagePort}/`);
+
+run(browser, [
+  "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), "smoke-"))}`,
+  "--window-size=1400,950", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required",
+  "--no-first-run", "about:blank",
+]);
+await waitFor(`http://127.0.0.1:${debugPort}/json/version`);
+const targets = await (await fetch(`http://127.0.0.1:${debugPort}/json/list`)).json();
+const page = targets.find(target => target.type === "page");
+const socket = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise(resolve => socket.addEventListener("open", resolve));
+
+let nextId = 0;
+const pending = new Map();
+const errors = [];
+socket.addEventListener("message", event => {
+  const message = JSON.parse(event.data);
+  if (message.id && pending.has(message.id)) {
+    pending.get(message.id)(message);
+    pending.delete(message.id);
+  }
+  if (message.method === "Runtime.exceptionThrown") errors.push(`exception: ${message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text}`);
+  if (message.method === "Runtime.consoleAPICalled" && ["error", "warning"].includes(message.params.type)) {
+    errors.push(`console.${message.params.type}: ${message.params.args.map(arg => arg.value ?? arg.description).join(" ")}`);
+  }
+});
+const send = (method, params = {}) => new Promise(resolve => {
+  const id = ++nextId;
+  pending.set(id, resolve);
+  socket.send(JSON.stringify({ id, method, params }));
+});
+const evaluate = async expression => (await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
+async function shot(name) {
+  const { result } = await send("Page.captureScreenshot", { format: "png" });
+  writeFileSync(join(outDir, `${name}.png`), Buffer.from(result.data, "base64"));
+  console.log(`saved ${name}.png`);
+}
+const keyInfo = {
+  KeyW: ["w", 87], KeyA: ["a", 65], KeyS: ["s", 83], KeyD: ["d", 68], Space: [" ", 32], ShiftLeft: ["Shift", 16],
+  ArrowUp: ["ArrowUp", 38], ArrowDown: ["ArrowDown", 40], ArrowLeft: ["ArrowLeft", 37], ArrowRight: ["ArrowRight", 39], Enter: ["Enter", 13],
+};
+const key = (type, code) => send("Input.dispatchKeyEvent", { type, code, key: keyInfo[code][0], windowsVirtualKeyCode: keyInfo[code][1] });
+async function hold(code, ms) {
+  await key("keyDown", code);
+  await sleep(ms);
+  await key("keyUp", code);
+}
+const text = () => evaluate("document.body.innerText.replace(/\\s+/g, ' ').slice(0, 600)");
+
+await send("Runtime.enable");
+await send("Page.enable");
+await send("Page.navigate", { url: `http://127.0.0.1:${pagePort}/` });
+await sleep(3500);
+await shot("1-menu");
+console.log("menu text:", await text());
+
+const clicked = await evaluate(`(() => {
+  const button = [...document.querySelectorAll("button")].find(b => /quick play/i.test(b.innerText));
+  if (!button) return false;
+  button.click();
+  return true;
+})()`);
+console.log("clicked quick play:", clicked);
+await sleep(1500);
+await shot("2-round-start");
+
+// Duck starts at the front-left near the tray: step up/left to the tray, grab, then head right to the desk and hold.
+await hold("KeyA", 250);
+await hold("KeyW", 150);
+await hold("Space", 80);
+await sleep(300);
+await shot("3-grabbed");
+await hold("KeyD", 750);
+await key("keyDown", "Space");
+await sleep(2000);
+await key("keyUp", "Space");
+await shot("4-stamped");
+await hold("ShiftLeft", 60);
+await hold("ArrowRight", 400);
+await sleep(500);
+console.log("hud text:", await text());
+await shot("5-later");
+
+console.log(errors.length ? `ERRORS:\n${errors.join("\n")}` : "no console errors");
+socket.close();
+cleanup();
+process.exit(0);

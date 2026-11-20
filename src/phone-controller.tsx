@@ -120,14 +120,14 @@ export default function PhoneController({ code, local }: { code: string; local: 
   const playing = status?.phase === "playing";
 
   return (
-    <main className="pad" style={{ "--pad": critter?.colour ?? "#efe7ff" } as CSSProperties}>
-      <header className="pad-head">
+    <main className="gp" style={{ "--gp": critter?.colour ?? "#efe7ff" } as CSSProperties}>
+      <header className="gp-head">
         <strong>{critter ? `${critter.emoji} You’re the ${critter.name}` : "Shift Happens!"}</strong>
         <span>Room {code}</span>
       </header>
 
       {connection !== "connected" || seat === null ? (
-        <section className="pad-wait">
+        <section className="gp-wait">
           {connection === "lost" ? (
             <><h1>Lost the laptop</h1><p>Check you’re on the same Wi-Fi as the laptop, then reload this page.</p></>
           ) : (
@@ -135,37 +135,37 @@ export default function PhoneController({ code, local }: { code: string; local: 
           )}
         </section>
       ) : seat < 0 ? (
-        <section className="pad-wait">
-          <h1>All four critters are taken</h1>
-          <p>Four phones are already playing. Keep this open and you’ll jump in as soon as one leaves.</p>
+        <section className="gp-wait">
+          <h1>All the critters are taken</h1>
+          <p>Every critter in this round already has a player. Keep this open and you’ll jump in as soon as one leaves.</p>
         </section>
       ) : (
         <>
-          <section className="pad-status" aria-live="polite">
+          <section className="gp-status" aria-live="polite">
             {status?.card && (
-              <b className="shifts-person" style={{ "--role": cardColours[status.card.kind] } as CSSProperties}>
+              <b className="person-chip" style={{ "--role": cardColours[status.card.kind] } as CSSProperties}>
                 {kindNames[status.card.kind]} · {days[status.card.day]}{status.card.worker ? ` · ${status.card.worker}` : ""}{status.card.approved ? " ✓" : ""}
               </b>
             )}
             <p>{!status ? "Connected" : playing ? (status.stamping ? "Stamping…" : status.prompt) : status.phase === "ready" ? "Ready when you are" : status.phase === "won" ? "Fully rostered!" : "Understaffed"}</p>
-            {status && <small>Roster {status.filled}/{status.needed} · {clock(status.time)} left · <span className={`pad-stage pad-stage--${status.stage}`}>{stageNames[status.stage]}</span></small>}
-            {status?.stamping && <progress value={status.stamp} max={1} aria-label="Approval progress" />}
-            {status?.news && playing && <small className="pad-news">📞 {status.news}</small>}
+            {status && <small>Roster {status.filled}/{status.needed} · {clock(status.time)} left{playing && <> · <span className={`gp-stage gp-stage--${status.stage}`}>{stageNames[status.stage]}</span></>}</small>}
+            {status?.stamping && <progress className="gp-progress" value={status.stamp} max={1} aria-label="Approval progress" />}
+            {status?.news && playing && <small className="gp-news">📞 {status.news}</small>}
           </section>
           {playing ? (
-            <section className="pad-controls">
-              <div className="shifts-stick pad-stick" onPointerDown={stickDown}
+            <section className="gp-controls">
+              <div className="touch-stick gp-stick" onPointerDown={stickDown}
                 onPointerMove={event => event.pointerId === input.current.pointer && moveStick(event.clientX, event.clientY)}
                 onPointerUp={stickUp} onPointerCancel={stickUp} onLostPointerCapture={stickUp} role="presentation">
                 <span ref={knob} />
               </div>
-              <div className="pad-buttons">
-                <button type="button" className="pad-dash" data-ready={status?.dashReady ?? true}
+              <div className="gp-buttons">
+                <button type="button" className="gp-dash" data-ready={status?.dashReady ?? true}
                   onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); dashing(true); }}
                   onPointerUp={() => dashing(false)} onPointerCancel={() => dashing(false)} onLostPointerCapture={() => dashing(false)}>
                   Dash
                 </button>
-                <button type="button" className="pad-action"
+                <button type="button" className="gp-action"
                   onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); act(true); }}
                   onPointerUp={() => act(false)} onPointerCancel={() => act(false)} onLostPointerCapture={() => act(false)}>
                   {status?.stamping ? "Hold…" : "Action"}
@@ -173,8 +173,8 @@ export default function PhoneController({ code, local }: { code: string; local: 
               </div>
             </section>
           ) : (
-            <section className="pad-wait">
-              <button type="button" className="pad-start" onClick={() => link.current?.send({ t: "start" }, host.current ?? undefined)}>
+            <section className="gp-wait">
+              <button type="button" className="gp-start" onClick={() => link.current?.send({ t: "start" }, host.current ?? undefined)}>
                 {status?.phase === "ready" || !status ? "Start round" : "Play again"}
               </button>
               <p>Watch the big screen. Move with the stick. Action grabs, stamps, passes and pins cards. Dash bowls over the Shift Snatcher.</p>

@@ -1,6 +1,6 @@
 # Shift Happens!
 
-Overcooked, but for rostering. A duck and a bunny race around a cosy office signing staff on, passing them over the counter and pinning them onto the weekly roster before the clock runs out. Every staff member has a role, days they can work and a number of shifts, so a finished round is a real roster you can copy and use.
+Overcooked, but for rostering. Two to four helper critters live inside a rostering system. Employees keep sending in shift requests, and the helpers race the request cards through the system to fill all 14 shifts on the week's Roster Board in two minutes. Cancellations and a shift-stealing bin chicken keep un-filling it.
 
 **[Play it now](https://vetematts.github.io/ShiftHappens/)** on a laptop or a phone.
 
@@ -8,25 +8,28 @@ Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edwa
 
 ## How to play
 
-1. Staff wait at the table, each wearing a cap in their role colour (in the sample café: barista pink, kitchen orange, register teal). Their name tag shows the days they can work and the shifts they have left.
-2. Grab someone and hold the action button at the manager's desk to sign them on.
-3. Pass them over the counter to your teammate.
-4. Stand at a day on the board and roster them onto an open shift that matches their role, on a day they can work. In the sample café nobody works two shifts in one day.
-5. After a shift they head home and come back while they have hours left. A sick call knocks someone off the board for that day, so refill those shifts too.
+| Card | What to do |
+| --- | --- |
+| 🟦 **Shift request** | Grab it from the Request Tray, hold the action button at the Manager's Desk to stamp it, pass it over the counter and pin it in its day's column on the board. |
+| 🟥 **Cancelled** | A pinned shift turns red when the worker cancels. Pull it off the board and drop it in the Shredder. A yellow open shift appears on the tray. |
+| 🟨 **Open shift** | Take it to the Staff Room and offer it to someone whose bubble shows that day. Once they accept, pin it. No stamp needed. |
+| 🐦 **Shift Snatcher** | A bin chicken sneaks to the board, steals a card and runs for the exit. Dash into it to make it drop the card, then pin it again. If it escapes, the shift becomes an open shift. |
 
-Cover every shift before the clock runs out to win. The end screen shows the finished roster with a **Copy roster** button.
+The board only takes an approved card, in an empty slot on the card's day. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). Fill all 14 slots with no red cards to win. The time left is your score.
 
-| | Move | Action |
-| --- | --- | --- |
-| Duck (Player 1) | WASD | Space |
-| Bunny (Player 2) | Arrow keys | Enter |
-| Phone browser | Thumb stick | Action button |
+| | Move | Action (hold to stamp) | Dash |
+| --- | --- | --- | --- |
+| Duck (Player 1) | WASD | Space | Left Shift |
+| Bunny (Player 2) | Arrow keys | Enter | Right Shift or `/` |
+| Cat and frog (Players 3–4), or any phone | Thumb stick | Action button | Dash button |
 
-Playing alone? Press **Q**, or the swap button on a phone, to switch between the duck and the bunny.
+Playing alone? Press **Q**, or the swap button on a touch screen, to switch critters.
+
+**Testing.** `node scripts/simulate.ts` plays rounds with bots and prints win rates. After `npm run build`, `node scripts/smoke.mjs` plays the build in headless Edge and saves screenshots to `smoke-out/`. Add `?debug` to the address to get `shiftHappens.round()` in the browser console.
 
 ## Quick play or Roster my team
 
-**Quick play** drops you into a three-minute week at a sample café.
+**Quick play** drops you into a two-minute week at a sample café.
 
 **Roster my team** is for a real business, and takes four steps:
 
@@ -75,8 +78,8 @@ React and Vite for the page, Three.js for the 3D office, [Fredoka](https://fonts
 
 | File | What it does |
 | --- | --- |
-| `src/round.ts` | All the rules: roles, the starting teams, the week's places, signing on, rostering, sick calls, collisions, and the timings in `settings` |
-| `src/office-world.ts` | The Three.js office, critters, staff, board and effects |
+| `src/round.ts` | All the rules: the starting teams, request cards, stamping, pinning, cancellations, open shifts, the Staff Room, the Shift Snatcher, collisions, and every tuning number in `settings` |
+| `src/office-world.ts` | The Three.js office, critters, cards, staff, the Snatcher, board and effects |
 | `src/shift-happens.tsx` | The game screen: input, HUD, menu, how to play, results, and the phone lobby |
 | `src/team-setup.tsx` | The **Roster my team** steps: business, roles and shifts, team, week. Saved in the browser |
 | `src/phone-link.ts` | Room codes, join links and the peer-to-peer link for phones |

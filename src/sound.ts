@@ -1,4 +1,7 @@
-export type Cue = "spawn" | "pick" | "put" | "approve" | "pin" | "rush" | "win" | "lose" | "swap" | "sick";
+import type { FxKind } from "./round";
+
+/** One sound per rules fx kind, plus "swap" for switching critters. */
+export type Cue = FxKind | "swap";
 
 const storageKey = "shift-happens-muted";
 
@@ -56,26 +59,55 @@ export function createSound() {
     source.start();
   }
 
+  const stamp = () => {
+    thud(0.9);
+    note(196, 0, 0.18, "square", 0.05, 110);
+    note(784, 0.08, 0.16, "sine", 0.08);
+  };
+  const alarm = () => [0, .16, .5, .66].forEach(at => note(1180, at, 0.12, "square", 0.04));
+  const fanfare = (rise: number) => {
+    note(330 * rise, 0, 0.14, "sawtooth", 0.05, 660 * rise);
+    note(660 * rise, 0.13, 0.18, "sawtooth", 0.05, 990 * rise);
+  };
+
   const cues: Record<Cue, () => void> = {
     spawn: () => note(880, 0, 0.09, "sine", 0.05, 1320),
+    open: () => {
+      note(700, 0, 0.09, "sine", 0.06, 1050);
+      note(1050, 0.08, 0.1, "sine", 0.05);
+    },
     pick: () => note(520, 0, 0.1, "triangle", 0.12, 860),
     put: () => note(420, 0, 0.1, "triangle", 0.1, 260),
-    approve: () => {
-      thud(0.9);
-      note(196, 0, 0.18, "square", 0.05, 110);
-      note(784, 0.08, 0.16, "sine", 0.08);
+    stamp,
+    accept: () => {
+      note(660, 0, 0.1, "sine", 0.09);
+      note(990, 0.08, 0.16, "sine", 0.09);
     },
     pin: () => {
       note(988, 0, 0.12, "sine", 0.11);
       note(1319, 0.07, 0.2, "sine", 0.1);
     },
-    rush: () => {
-      note(330, 0, 0.14, "sawtooth", 0.05, 660);
-      note(660, 0.13, 0.18, "sawtooth", 0.05, 990);
+    nope: () => {
+      note(220, 0, 0.09, "square", 0.06, 180);
+      note(180, 0.1, 0.14, "square", 0.06, 140);
     },
+    cancel: alarm,
+    shred: () => {
+      thud(0.6);
+      note(140, 0, 0.3, "sawtooth", 0.04, 90);
+    },
+    snatch: () => [0, .09, .18].forEach(at => note(1400, at, 0.07, "square", 0.05, 900)),
+    knock: () => {
+      thud(1);
+      note(300, 0, 0.12, "triangle", 0.1, 120);
+    },
+    rescue: () => [660, 880, 1100].forEach((tone, i) => note(tone, i * 0.07, 0.14, "triangle", 0.09)),
+    escape: () => note(500, 0, 0.4, "sawtooth", 0.05, 120),
+    dash: () => note(300, 0, 0.12, "sine", 0.06, 700),
+    busy: () => fanfare(1),
+    chaos: () => fanfare(1.5),
     win: () => [523, 659, 784, 1047].forEach((tone, i) => note(tone, i * 0.11, 0.32, "triangle", 0.12)),
     lose: () => [392, 330, 262].forEach((tone, i) => note(tone, i * 0.18, 0.34, "triangle", 0.1)),
-    sick: () => [0, .16, .5, .66].forEach(at => note(1180, at, 0.12, "square", 0.04)),
     swap: () => {
       note(620, 0, 0.07, "sine", 0.08, 930);
       note(930, 0.06, 0.08, "sine", 0.06, 1240);

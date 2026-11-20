@@ -1,7 +1,7 @@
 import type { FxKind } from "./round";
 
-/** One sound per rules fx kind, plus "swap" for switching critters. */
-export type Cue = FxKind | "swap";
+/** One sound per rules fx kind, plus UI-only cues: "swap" for switching critters and "tick" for the last ten seconds. */
+export type Cue = FxKind | "swap" | "tick";
 
 const storageKey = "shift-happens-muted";
 
@@ -108,6 +108,7 @@ export function createSound() {
     chaos: () => fanfare(1.5),
     win: () => [523, 659, 784, 1047].forEach((tone, i) => note(tone, i * 0.11, 0.32, "triangle", 0.12)),
     lose: () => [392, 330, 262].forEach((tone, i) => note(tone, i * 0.18, 0.34, "triangle", 0.1)),
+    tick: () => note(1000, 0, 0.05, "square", 0.04),
     swap: () => {
       note(620, 0, 0.07, "sine", 0.08, 930);
       note(930, 0.06, 0.08, "sine", 0.06, 1240);

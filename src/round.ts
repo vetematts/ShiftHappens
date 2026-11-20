@@ -792,11 +792,13 @@ function cancelledAt(round: Round, point: Point) {
   return [day, day + 7].find(slot => cardIn(round, slot)?.kind === "cancelled");
 }
 
-/** The staff NPC in reach of this point. */
-export function staffInReach(round: Round, point: Point) {
+/** The staff NPC in reach of this point. With a `day`, someone free that day wins over someone nearer. */
+export function staffInReach(round: Round, point: Point, day?: number) {
+  const score = (npc: Extract<Npc, { kind: "staff" }>, distance: number) =>
+    distance + (day !== undefined && !npc.days.includes(day) ? 100 : 0);
   return round.npcs.map(npc => (npc.kind === "staff" ? { npc, distance: Math.hypot(npc.point.x - point.x, npc.point.z - point.z) } : undefined))
     .filter(entry => entry !== undefined && entry.distance <= settings.reach)
-    .sort((a, b) => a!.distance - b!.distance)[0]?.npc as Extract<Npc, { kind: "staff" }> | undefined;
+    .sort((a, b) => score(a!.npc, a!.distance) - score(b!.npc, b!.distance))[0]?.npc;
 }
 
 /** Where on the board this card can go from this point, or why not. */
@@ -833,7 +835,7 @@ export function nextAction(round: Round, index: number) {
   if (atShredder(position)) return card.kind === "cancelled" ? "Shred it" : "Shred (bin this card)";
   if (card.kind === "request" && !card.approved && atDesk(position)) return "Hold to stamp";
   if (card.kind === "open" && !card.approved) {
-    const npc = staffInReach(round, position);
+    const npc = staffInReach(round, position, card.day);
     if (npc) {
       const name = round.staff[npc.person].name;
       return npc.days.includes(card.day) ? `Offer to ${name}` : `${name} isn't free ${days[card.day]}`;
@@ -909,7 +911,7 @@ export function interact(round: Round, index: number) {
   }
 
   if (card.kind === "open" && !card.approved) {
-    const npc = staffInReach(round, position);
+    const npc = staffInReach(round, position, card.day);
     if (npc) {
       const name = round.staff[npc.person].name;
       if (!npc.days.includes(card.day)) {

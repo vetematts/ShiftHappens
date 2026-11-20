@@ -98,7 +98,7 @@ const text = () => evaluate("document.body.innerText.replace(/\\s+/g, ' ').slice
 
 await send("Runtime.enable");
 await send("Page.enable");
-await send("Page.navigate", { url: `http://127.0.0.1:${pagePort}/` });
+await send("Page.navigate", { url: `http://127.0.0.1:${pagePort}/?debug` });
 await sleep(3500);
 await shot("1-menu");
 console.log("menu text:", await text());
@@ -129,6 +129,38 @@ await hold("ArrowRight", 400);
 await sleep(500);
 console.log("hud text:", await text());
 await shot("5-later");
+
+// Fast-forward with the ?debug hook: pin some cards, then jump to busy, chaos and the end.
+const pin = slots => `(() => {
+  const round = shiftHappens.round();
+  for (const slot of ${JSON.stringify(slots)}) {
+    if (round.board[slot] !== undefined) continue;
+    const id = round.cards.length;
+    round.cards.push({ id, kind: "request", day: slot % 7, worker: slot % round.staff.length, approved: true, stamp: 0, at: { place: "board", slot }, born: round.elapsed });
+    round.board[slot] = id;
+  }
+})()`;
+const jump = (elapsed, extra = "") => evaluate(`(() => { const r = shiftHappens.round(); r.elapsed = ${elapsed}; ${extra} })()`);
+await evaluate(pin([0, 1, 2, 3, 7, 8, 9]));
+await jump(39.5, "r.nextCancel = 40.5; r.nextSnatch = 41;");
+await sleep(2500);
+await shot("6-busy-cancel");
+await sleep(2500);
+await shot("7-snatcher");
+console.log("busy text:", await text());
+await jump(79.5);
+await sleep(1500);
+await shot("8-chaos");
+await jump(119.6);
+await sleep(1500);
+await shot("9-lost");
+console.log("lost text:", await text());
+await evaluate(`[...document.querySelectorAll("button")].find(b => /play again/i.test(b.innerText))?.click()`);
+await sleep(1500);
+await evaluate(pin([...Array(14).keys()]));
+await sleep(1500);
+await shot("10-won");
+console.log("won text:", await text());
 
 console.log(errors.length ? `ERRORS:\n${errors.join("\n")}` : "no console errors");
 socket.close();

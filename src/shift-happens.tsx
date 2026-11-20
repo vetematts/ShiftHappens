@@ -404,6 +404,10 @@ function Game() {
     // Sync saved settings after mount, so server and client render the same markup first.
     setMuted(effects.muted);
     setTeam(loadTeam());
+    // `?debug` exposes the live round for testing from the console, e.g. `shiftHappens.round().elapsed = 75`.
+    if (new URLSearchParams(location.search).has("debug")) {
+      (window as unknown as { shiftHappens: object }).shiftHappens = { round: () => round.current };
+    }
     let world: ReturnType<typeof createOfficeWorld> | undefined;
     let frame: number;
     let previous = performance.now();

@@ -764,6 +764,8 @@ export function stepRound(round: Round, seconds: number) {
     announce(round, stage === "busy" ? "Busy! Cancellations and the Snatcher are coming." : "Chaos! Everything speeds up.");
   }
 
+  // Queued open shifts take free tray seats before new requests do.
+  placeOpenShifts(round);
   if (round.elapsed >= round.nextSpawn) {
     spawnRequest(round);
     round.nextSpawn = round.elapsed + spawnInterval(round);
@@ -776,7 +778,6 @@ export function stepRound(round: Round, seconds: number) {
     spawnSnatcher(round);
     round.nextSnatch = round.elapsed + settings.snatcherEvery[round.stage];
   }
-  placeOpenShifts(round);
   keepStaffRoomUseful(round);
   stepSnatcher(round, seconds);
 

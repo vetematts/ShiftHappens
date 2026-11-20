@@ -304,6 +304,36 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     });
   }
 
+  // Station names: bold billboards that always face the camera, sized to their text so long names stay big
+  function stationSign(text: string, background: string, x: number, y: number, z: number, height = .5) {
+    const measure = document.createElement("canvas").getContext("2d")!;
+    measure.font = font(900, 96);
+    const width = Math.ceil(measure.measureText(text).width) + 110;
+    const texture = paint(width, 150, pen => {
+      pen.fillStyle = "#2a2433";
+      pen.beginPath();
+      pen.roundRect(0, 0, width, 150, 46);
+      pen.fill();
+      pen.fillStyle = background;
+      pen.beginPath();
+      pen.roundRect(10, 10, width - 20, 130, 38);
+      pen.fill();
+      pen.fillStyle = "#2a2433";
+      pen.font = font(900, 96);
+      pen.textAlign = "center";
+      pen.textBaseline = "middle";
+      pen.fillText(text, width / 2, 80);
+    });
+    const surface = new T.SpriteMaterial({ map: texture, depthWrite: false, toneMapped: false });
+    ownMaterials.push(surface);
+    const sprite = new T.Sprite(surface);
+    sprite.position.set(x, y, z);
+    sprite.scale.set(height * width / 150, height, 1);
+    sprite.renderOrder = 3;
+    scene.add(sprite);
+    return sprite;
+  }
+
   // Floor: a chunky island with soft checker tiles
   rbox(scene, colours.baseShade, 0, -.62, 0, 20.5, .5, 12.2, .22).castShadow = false;
   rbox(scene, colours.base, 0, -.26, 0, 20.3, .46, 12, .2).castShadow = false;
@@ -505,12 +535,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     rbox(scene, 0x7bbde0, x, .5, -.44, .9, .5, .02, .02).castShadow = false;
   }
   const pads = office.pass.map(point => rbox(scene, colours.pad, point.x, 1.02, point.z, 1.32, .055, .78, .025, true));
-  const passSign = new T.Group();
-  passSign.position.set(3.45, 1.0, 0);
-  scene.add(passSign);
-  cylinder(passSign, colours.black, 0, .22, 0, .03, .44);
-  face(passSign, sign("PASS", "#fff27a"), 0, .62, .03, 1.15, .36);
-  rbox(passSign, colours.black, 0, .62, 0, 1.2, .4, .04, .04);
+  stationSign("PASS", "#fff27a", 3.45, 1.75, 0, .46);
 
   // Request inbox
   const inbox = new T.Group();
@@ -521,9 +546,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   for (const [x, z, w, d] of [[0, .7, 3.2, .08], [0, -.7, 3.2, .08], [1.6, 0, .08, 1.4], [-1.6, 0, .08, 1.4]]) {
     rbox(inbox, 0x8db3f5, x, .87, z, w, .16, d, .035);
   }
-  cylinder(inbox, colours.black, -1.2, 1.1, -.62, .03, .6);
-  rbox(inbox, colours.black, -1.2, 1.55, -.64, 1.2, .4, .04, .04);
-  face(inbox, sign("REQUESTS", "#bfe0ff"), -1.2, 1.55, -.615, 1.15, .36);
+  stationSign("REQUEST TRAY", "#bfe0ff", office.tray.x, .55, office.tray.z + 1.05, .52);
 
   // Manager's desk with a big rubber stamp
   const desk = new T.Group();
@@ -538,8 +561,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     }
   }
   rbox(desk, colours.deskShade, 0, .5, -.42, 1.8, .6, .08, .04);
-  rbox(desk, colours.white, -1.0, .97, .4, .74, .16, .05, .03);
-  face(desk, sign("MANAGER", "#fffdf8"), -1.0, .97, .43, .7, .2);
+  stationSign("MANAGER’S DESK", "#ffe6a8", office.desk.x, .55, office.desk.z + .95, .52);
   // monitor
   const monitor = new T.Group();
   monitor.position.set(-1.15, .91, -.2);
@@ -625,7 +647,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     strip.rotation.z = (i - 2) * .08;
     strip.castShadow = false;
   }
-  face(shredderGroup, sign("SHREDDER", "#fff27a"), 0, .88, .52, .78, .24);
+  stationSign("SHREDDER", "#fff27a", furniture.shredder.x + .35, .5, furniture.shredder.z + .9, .46);
   ball(shredderGroup, colours.stampRed, .33, 1.05, .52, .03, .03, .02, false);
   let shredShake = -10;
 
@@ -641,8 +663,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   door.add(leaf);
   rbox(leaf, 0xff9e7a, 0, .98, -.57, .08, 1.95, 1.12, .04);
   ball(leaf, 0xffd54f, 0, 1.0, -1.0, .05, .05, .05, false);
-  rbox(door, colours.black, -.1, 2.52, 0, .12, .4, 1.2, .04);
-  face(door, sign("EXIT", "#5fe39a"), -.1, 2.52, .62, 1.15, .36);
+  stationSign("EXIT", "#5fe39a", office.exit.x - .1, 2.85, office.exit.z, .5);
   rbox(scene, 0x5fe39a, office.exit.x - .35, .05, office.exit.z, 1.1, .03, 1.5, .01).castShadow = false;
   let doorOpen = .15;
   let doorKick = -10;
@@ -655,12 +676,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   rbox(scene, 0xff9fb4, staffRoom.x - .3, .26, sofaZ, 1.7, .42, .62, .12);
   rbox(scene, 0xff8aa6, staffRoom.x - .3, .62, sofaZ - .26, 1.7, .5, .16, .08);
   for (const side of [-1, 1]) rbox(scene, 0xff8aa6, staffRoom.x - .3 + side * .88, .4, sofaZ, .16, .56, .62, .06);
-  const roomSign = new T.Group();
-  roomSign.position.set(staffRoom.x - staffRoom.w / 2 - .05, 0, staffRoom.z - staffRoom.d / 2 + .1);
-  scene.add(roomSign);
-  cylinder(roomSign, colours.black, 0, .6, 0, .03, 1.2);
-  rbox(roomSign, colours.black, 0, 1.4, 0, 1.6, .5, .04, .04);
-  face(roomSign, sign("STAFF ROOM", "#d9ccff"), 0, 1.4, .03, 1.5, .46);
+  stationSign("STAFF ROOM", "#d9ccff", staffRoom.x - .5, 1.75, staffRoom.z - staffRoom.d / 2 - .05, .5);
 
   // A phone on the desk that rings when someone calls in sick
   const phone = new T.Group();
@@ -681,61 +697,72 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   geometries.push(cardBody, cardFace);
   const cardPaper = parts.material(colours.white, .8);
   const cardTextures = new Map<string, T.Texture>();
-  const headerColours = { request: "#6eb7ff", open: "#ffd35c", cancelled: "#ff6b6b" } as const;
+  // The whole card is coloured by kind, with a darker header band: blue request, yellow open shift, red cancelled.
+  const cardLooks = {
+    request: { body: "#7cc2ff", header: "#2f86e6", headerInk: "#ffffff", ink: "#0f2742", soft: "#1d4f86" },
+    open: { body: "#ffd96b", header: "#f0ac1c", headerInk: "#4a3200", ink: "#3d2a00", soft: "#7a5a00" },
+    cancelled: { body: "#ff9a9a", header: "#e0414b", headerInk: "#ffffff", ink: "#4a0f14", soft: "#9b1c26" },
+  } as const;
   const headerText = { request: "REQUEST", open: "OPEN SHIFT", cancelled: "CANCELLED" } as const;
-  const avatarTones = ["#ff9fb4", "#8fd0ff", "#a8e08a", "#ffb070", "#c9a8ff", "#7fe0d0", "#f5c542"];
+  const avatarTones = ["#ff9fb4", "#ffe08a", "#a8e08a", "#ffb070", "#c9a8ff", "#7fe0d0", "#fff3d6"];
 
   function cardTexture(card: Card, name: string) {
     const key = `${card.kind}|${card.day}|${name}|${card.approved}`;
     const cached = cardTextures.get(key);
     if (cached) return cached;
+    const look = cardLooks[card.kind];
     const texture = paint(256, 168, pen => {
-      pen.fillStyle = "#fffdf8";
+      pen.fillStyle = look.body;
       pen.beginPath();
       pen.roundRect(0, 0, 256, 168, 20);
       pen.fill();
-      pen.fillStyle = headerColours[card.kind];
+      pen.fillStyle = look.header;
       pen.beginPath();
-      pen.roundRect(0, 0, 256, 44, [20, 20, 0, 0]);
+      pen.roundRect(0, 0, 256, 46, [20, 20, 0, 0]);
       pen.fill();
       pen.textAlign = "center";
       pen.textBaseline = "middle";
-      pen.fillStyle = card.kind === "open" ? "#5a4300" : "#ffffff";
-      pen.font = font(900, 26);
-      pen.fillText(headerText[card.kind], 128, 24);
-      pen.fillStyle = "#2a2433";
-      pen.font = font(900, 80);
-      pen.fillText(days[card.day], card.kind === "cancelled" ? 100 : 128, 94, 190);
+      pen.fillStyle = look.headerInk;
+      pen.font = font(900, 32);
+      pen.fillText(headerText[card.kind], 128, 25, 236);
+      pen.fillStyle = look.ink;
+      pen.font = font(900, 100);
+      pen.fillText(days[card.day], card.kind === "cancelled" ? 104 : 128, 92, 200);
       if (card.kind === "cancelled") {
-        pen.strokeStyle = "#e0414b";
+        pen.strokeStyle = "#c0222e";
         pen.lineWidth = 14;
         pen.lineCap = "round";
         pen.beginPath();
-        pen.moveTo(190, 68);
-        pen.lineTo(236, 116);
-        pen.moveTo(236, 68);
-        pen.lineTo(190, 116);
+        pen.moveTo(196, 70);
+        pen.lineTo(240, 114);
+        pen.moveTo(240, 70);
+        pen.lineTo(196, 114);
         pen.stroke();
       }
       if (name) {
         const tone = avatarTones[(name.charCodeAt(0) + name.length) % avatarTones.length];
         pen.fillStyle = tone;
         pen.beginPath();
-        pen.arc(36, 140, 21, 0, Math.PI * 2);
+        pen.arc(32, 141, 24, 0, Math.PI * 2);
         pen.fill();
         pen.fillStyle = "#2a2433";
-        pen.font = font(900, 26);
-        pen.fillText(name.charAt(0).toUpperCase(), 36, 141);
+        pen.font = font(900, 30);
+        pen.fillText(name.charAt(0).toUpperCase(), 32, 142);
         pen.textAlign = "left";
-        pen.font = font(900, 36);
-        pen.fillText(name, 66, 142, 120);
+        pen.fillStyle = look.ink;
+        pen.font = font(900, 46);
+        pen.fillText(name, 64, 143, card.approved ? 124 : 180);
       } else {
-        pen.fillStyle = card.kind === "cancelled" ? "#e0414b" : "#9a7a1a";
-        pen.font = font(900, 28);
-        pen.fillText(card.kind === "cancelled" ? "cancelled!" : "needs cover", 128, 142);
+        pen.fillStyle = look.soft;
+        pen.font = font(900, 34);
+        pen.fillText(card.kind === "cancelled" ? "cancelled!" : "needs cover", 128, 142, 236);
       }
       if (card.approved) {
-        pen.fillStyle = "#3fcf7a";
+        pen.fillStyle = "#ffffff";
+        pen.beginPath();
+        pen.arc(224, 138, 28, 0, Math.PI * 2);
+        pen.fill();
+        pen.fillStyle = "#2fbf6a";
         pen.beginPath();
         pen.arc(224, 138, 24, 0, Math.PI * 2);
         pen.fill();
@@ -1013,23 +1040,27 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     return mesh;
   });
 
-  // Stamp progress rings
-  const ringSteps = Array.from({ length: 25 }, (_, step) => {
-    const geometry = new T.RingGeometry(.2, .3, 40, 1, Math.PI / 2, Math.max(.001, step / 24) * Math.PI * 2);
-    geometries.push(geometry);
-    return geometry;
-  });
-  const ringTrackGeometry = new T.RingGeometry(.2, .3, 40);
-  geometries.push(ringTrackGeometry);
-  const ringTrack = new T.MeshBasicMaterial({ color: 0x2a2433, transparent: true, opacity: .35, depthTest: false, side: T.DoubleSide });
-  const ringFill = new T.MeshBasicMaterial({ color: 0x5fe39a, depthTest: false, toneMapped: false, side: T.DoubleSide });
-  ownMaterials.push(ringTrack, ringFill);
+  // Stamp progress: a horizontal bar over the critter's head, with a thin white outline so it reads on any floor
+  const barWidth = 1.5;
+  const barHeight = .26;
+  const barOutline = .05;
+  const barPlane = new T.PlaneGeometry(1, 1);
+  geometries.push(barPlane);
+  const barEdge = new T.MeshBasicMaterial({ color: 0xffffff, depthTest: false, toneMapped: false });
+  const barTrack = new T.MeshBasicMaterial({ color: 0x2a2433, depthTest: false, toneMapped: false });
+  const barFill = new T.MeshBasicMaterial({ color: 0x4fdc8a, depthTest: false, toneMapped: false });
+  ownMaterials.push(barEdge, barTrack, barFill);
   const progress = critters.map(() => {
     const group = new T.Group();
-    const track = new T.Mesh(ringTrackGeometry, ringTrack);
-    const fill = new T.Mesh(ringSteps[0], ringFill);
-    track.renderOrder = fill.renderOrder = 6;
-    group.add(track, fill);
+    const edge = new T.Mesh(barPlane, barEdge);
+    edge.scale.set(barWidth + barOutline * 2, barHeight + barOutline * 2, 1);
+    const track = new T.Mesh(barPlane, barTrack);
+    track.scale.set(barWidth, barHeight, 1);
+    const fill = new T.Mesh(barPlane, barFill);
+    edge.renderOrder = 6;
+    track.renderOrder = 7;
+    fill.renderOrder = 8;
+    group.add(edge, track, fill);
     group.visible = false;
     scene.add(group);
     return { group, fill };
@@ -1147,6 +1178,9 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   let pan = 0;
   let maxPan = 0;
   const basePosition = new T.Vector3();
+  // Screen space (in CSS pixels) the page's HUD covers at the top and bottom; the room is framed between them.
+  let insetTop = 0;
+  let insetBottom = 0;
 
   // Landscape screens see the whole office. Tall screens fit its depth and follow player 1 sideways.
   function frame(width: number, height: number) {
@@ -1157,7 +1191,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     camera.updateProjectionMatrix();
     const pitch = tall ? 1.08 : .9;
     const direction = new T.Vector3(0, Math.sin(pitch), Math.cos(pitch));
-    const bottom = touch && tall ? -.6 : touch ? -.9 : -.95;
+    const top = Math.min(.95, 1 - 2 * insetTop / height);
+    const bottom = Math.max(touch && tall ? -.6 : touch ? -.9 : -.95, -1 + 2 * insetBottom / height);
     const span = tall ? Math.max(4.2, 10.3 * aspect * .95) : Infinity;
     const fits = (distance: number) => {
       camera.position.copy(focus).addScaledVector(direction, distance);
@@ -1165,7 +1200,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       camera.updateMatrixWorld();
       return corners.every(point => {
         ndc.set(Math.max(-span, Math.min(span, point.x)), point.y, point.z).project(camera);
-        return Math.abs(ndc.x) <= .97 && ndc.y <= .95 && ndc.y >= bottom;
+        return Math.abs(ndc.x) <= .97 && ndc.y <= top && ndc.y >= bottom;
       });
     };
     let near = 8;
@@ -1177,14 +1212,14 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     }
     // Centre the room vertically within the allowed band
     fits(far);
-    let top = -Infinity;
+    let high = -Infinity;
     let low = Infinity;
     corners.forEach(point => {
       ndc.copy(point).project(camera);
-      top = Math.max(top, ndc.y);
+      high = Math.max(high, ndc.y);
       low = Math.min(low, ndc.y);
     });
-    const lift = ((top + low) / 2 - (.95 + bottom) / 2) * Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * far;
+    const lift = ((high + low) / 2 - (top + bottom) / 2) * Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * far;
     const cameraUp = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
     camera.position.addScaledVector(cameraUp, lift);
     camera.lookAt(focus.clone().addScaledVector(cameraUp, lift));
@@ -1255,7 +1290,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         const slot = slotAt(round, event);
         const spot = slot === undefined ? { x, y: boardY } : slotOf(slot);
         emit(confetti, { x: spot.x, y: spot.y, z: boardZ + .3 }, 26, { colours: confettiColours, speed: 2.4, up: 3.2, gravity: 7, life: 1.2, size: 1 });
-        popup("pin", spot.x, spot.y + .9, boardZ + .5, .9);
+        popup("pin", spot.x, 1.0, office.boardZ + .9, .9);
         if (mine) mine.popped = now;
         shake = Math.max(shake, .12);
         break;
@@ -1269,7 +1304,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         const slot = slotAt(round, event);
         const spot = slot === undefined ? { x, y: boardY } : slotOf(slot);
         emit(puffs, { x: spot.x, y: spot.y, z: boardZ + .3 }, 10, { colours: [0xff6b6b, 0xfff6e6], speed: 1.3, up: .8, gravity: 0, life: .7, size: .9 });
-        popup("cancel", spot.x, spot.y + .9, boardZ + .5, 1);
+        popup("cancel", spot.x, 1.0, office.boardZ + .9, 1);
         ringUntil = now + 1.6;
         shake = Math.max(shake, .1);
         break;
@@ -1299,7 +1334,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       }
       case "snatch":
         shake = Math.max(shake, .26);
-        popup("snatch", x, 2.6, z + .3, 1.15);
+        popup("snatch", x, 1.0, Math.max(z, office.boardZ + .9), 1.15);
         emit(puffs, { x, y: 1, z }, 8, { colours: [0xfffdf8, 0xff8fb0], speed: 1.4, up: .8, gravity: 0, life: .6, size: .9 });
         break;
       case "knock":
@@ -1320,10 +1355,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(puffs, { x, y: .15, z }, 3, { colours: [0xfff3e2], speed: .5, up: .3, gravity: 0, life: .4, size: .9 });
         break;
       case "busy":
-        popup("busy", 0, 3.2, 1, 1.5);
         break;
       case "chaos":
-        popup("chaos", 0, 3.2, 1, 1.7);
         shake = Math.max(shake, .15);
         break;
       case "win":
@@ -1699,13 +1732,15 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(puffs, { x: player.position.x, y: .08, z: player.position.z }, 1, { colours: [0xfff3e2], speed: .25, up: .25, gravity: 0, life: .45, size: .7 });
       }
 
-      const ring = progress[i];
-      const amount = player.stamping && holding ? holding.stamp / settings.stampTime : 0;
-      ring.group.visible = amount > 0;
+      const bar = progress[i];
+      const amount = player.stamping && holding ? Math.min(1, holding.stamp / settings.stampTime) : 0;
+      bar.group.visible = amount > 0;
       if (amount > 0) {
-        ring.fill.geometry = ringSteps[Math.min(24, Math.round(amount * 24))];
-        ring.group.position.set(player.position.x, 4.0, player.position.z);
-        ring.group.quaternion.copy(camera.quaternion);
+        // The fill grows from the left edge of the track
+        bar.fill.scale.set(Math.max(.001, barWidth * amount), barHeight, 1);
+        bar.fill.position.x = -barWidth / 2 + barWidth * amount / 2;
+        bar.group.position.set(player.position.x, 3.7, player.position.z);
+        bar.group.quaternion.copy(camera.quaternion);
       }
     });
   }
@@ -1793,6 +1828,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   return {
     draw,
+    /** Keep the room clear of page overlays: pixels covered at the top and bottom of the canvas. */
+    setInsets(top: number, bottom: number) {
+      if (Math.abs(top - insetTop) < 1 && Math.abs(bottom - insetBottom) < 1) return;
+      insetTop = Math.max(0, top);
+      insetBottom = Math.max(0, bottom);
+      size();
+    },
     /** Turns screen-relative input (right, down) into a world direction for the current camera. */
     toWorld(right: number, down: number): [number, number] {
       const up = -down;

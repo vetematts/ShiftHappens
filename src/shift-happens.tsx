@@ -412,6 +412,26 @@ function Game() {
     let frame: number;
     let previous = performance.now();
     let lastUi = 0;
+    let lastFit = 0;
+
+    // Keep the office clear of the HUD: the camera frames the room between the top bar (plus a lane for
+    // news toasts) and the player panels, so alerts and stats never sit on top of the Roster Board.
+    function fitAroundHud() {
+      if (!world || !viewport) return;
+      const page = viewport.closest("main");
+      if (!page || round.current.phase !== "playing") {
+        world.setInsets(0, 0);
+        return;
+      }
+      const stage = viewport.getBoundingClientRect();
+      const shown = (selector: string) => [...page.querySelectorAll<HTMLElement>(selector)]
+        .map(element => element.getBoundingClientRect()).filter(box => box.width > 0 && box.height > 0);
+      const hudBottom = Math.max(0, ...shown(".hud, .week-strip").map(box => box.bottom - stage.top));
+      page.style.setProperty("--hud-bottom", `${Math.round(hudBottom)}px`);
+      const toastLane = 54;
+      const lowest = shown(".pads, .touch").map(box => stage.bottom - box.top);
+      world.setInsets(hudBottom + toastLane, Math.max(0, ...lowest) + 6);
+    }
     let lastBroadcast = 0;
     let displayedPhase: Round["phase"] | undefined;
     let displayedRound: Round | undefined;
@@ -447,6 +467,10 @@ function Game() {
         lastTick = left;
       } else {
         lastTick = Infinity;
+      }
+      if (now - lastFit >= 250) {
+        lastFit = now;
+        fitAroundHud();
       }
       world?.draw(state, focus.current);
       // Tell each phone what its critter is doing, about five times a second

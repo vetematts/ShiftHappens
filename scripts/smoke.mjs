@@ -119,11 +119,26 @@ await hold("KeyW", 150);
 await hold("Space", 80);
 await sleep(300);
 await shot("3-grabbed");
-await hold("KeyD", 750);
+// Put the duck at the desk with an unstamped request (via ?debug) and catch the stamp bar half full.
+await evaluate(`(() => {
+  const r = shiftHappens.round();
+  const p = r.players[0];
+  const held = p.holding === undefined ? undefined : r.cards[p.holding];
+  if (held) held.at = { place: "gone" };
+  const card = r.cards.find(c => c.at.place === "tray" && c.kind === "request");
+  p.position = { x: -.55, z: 2.05 };
+  card.at = { place: "hand", player: 0 };
+  p.holding = card.id;
+})()`);
+await sleep(300);
 await key("keyDown", "Space");
-await sleep(2000);
+// Hold the stamp at half way long enough to photograph the progress bar.
+await evaluate(`window.smokeHold = setInterval(() => { const r = shiftHappens.round(); const p = r.players[0]; if (p.holding !== undefined) { r.cards[p.holding].stamp = .75; p.stamping = true; } }, 5)`);
+await sleep(600);
+await shot("4-stamping");
+await evaluate("clearInterval(window.smokeHold)");
+await sleep(1500);
 await key("keyUp", "Space");
-await shot("4-stamped");
 await hold("ShiftLeft", 60);
 await hold("ArrowRight", 400);
 await sleep(500);

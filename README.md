@@ -38,7 +38,7 @@ Playing alone? Press **Q**, or the swap button on a touch screen, to switch crit
 3. **Team.** Add each person with their role, the days they can work and how many shifts they want.
 4. **Week.** Click how many of each role every shift needs, up to four people a shift.
 
-It warns about places nobody can work and roles without enough shifts between them, and saves the team on that device. Bigger weeks get a longer round. Play it, then copy the finished roster from the end screen.
+It warns about places nobody can work and roles without enough shifts between them, and saves the team on that device. In the game your team sends the requests and covers open shifts. For now each needed shift is one card on the board, so shifts that need several people are simplified to one. Play it, then copy the finished roster from the end screen.
 
 ## Phones as controllers (Jackbox-style)
 

@@ -104,7 +104,7 @@ function play(players: number, verbose: boolean) {
     if (verbose && round.elapsed - lastPrint >= 10) {
       lastPrint = round.elapsed;
       console.log(`${round.elapsed.toFixed(0).padStart(3)}s ${round.stage.padEnd(5)} ${filledShifts(round)}/${neededShifts(round)} `
-        + round.board.map((id, s) => (id === undefined ? "." : round.cards[id].kind === "cancelled" ? "X" : "#")).join("")
+        + round.board.map(id => (id === undefined ? "." : round.cards[id].kind === "cancelled" ? "X" : "#")).join("")
         + `  tray=${round.cards.filter(c => c.at.place === "tray").length} npcs=${round.npcs.map(n => n.kind[1]).join("")}`);
     }
   }

@@ -210,6 +210,10 @@ export const settings = {
   staffInRoom: 3,
   staffFreeDays: 3,
   maxPlayers: 4,
+  /** Seconds a news message stays up before a queued one can replace it, so each can be read. */
+  newsMinimum: 3,
+  /** Seconds a queued news message may wait before it's too stale to show. */
+  newsStale: 6,
 };
 
 /** Board columns, one per day, centred on the office. */
@@ -394,8 +398,10 @@ export type Round = {
   stats: Stats[];
   fx: Fx[];
   fxSeq: number;
-  /** Latest office news for the interface, such as a cancellation. */
-  news: { text: string; until: number };
+  /** The office news showing now, such as a cancellation: shown from `since` until `until`. */
+  news: { text: string; since: number; until: number };
+  /** News waiting its turn while another message is still being read. Urgent messages go to the front. */
+  newsQueue: { text: string; seconds: number; urgent: boolean; staleAt: number }[];
   /** Cancellation excuses still to use this round, as indexes into `excuses`, so none repeats until all are used. */
   excuseDeck: number[];
   custom: boolean;
@@ -553,7 +559,8 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     stats: Array.from({ length: count }, noStats),
     fx: [],
     fxSeq: 0,
-    news: { text: "", until: 0 },
+    news: { text: "", since: 0, until: 0 },
+    newsQueue: [],
     excuseDeck: shuffle(excuses.map((_, i) => i)),
     custom,
   };
@@ -573,8 +580,29 @@ function notify(round: Round, player: Player, message: string) {
   player.messageUntil = round.elapsed + 2.2;
 }
 
-function announce(round: Round, text: string, seconds = 4) {
-  round.news = { text, until: round.elapsed + seconds };
+/**
+ * Shows a news message, or queues it while the current one is still being read. Urgent messages (the Snatcher)
+ * jump the queue, so they wait at most `settings.newsMinimum` seconds.
+ */
+function announce(round: Round, text: string, seconds = 4, urgent = false) {
+  const item = { text, seconds, urgent, staleAt: round.elapsed + settings.newsStale };
+  if (urgent) {
+    // A newer urgent message replaces an older one still waiting, such as "loose" followed by "grabbed"
+    round.newsQueue = [item, ...round.newsQueue.filter(waiting => !waiting.urgent)];
+  } else {
+    round.newsQueue.push(item);
+  }
+  showNextNews(round);
+}
+
+// Moves the next queued message onto the banner once the current one has had its minimum time (or ended).
+function showNextNews(round: Round) {
+  round.newsQueue = round.newsQueue.filter(item => item.staleAt > round.elapsed);
+  const { since, until } = round.news;
+  const reading = until > round.elapsed && round.elapsed - since < Math.min(settings.newsMinimum, until - since);
+  if (reading || !round.newsQueue.length) return;
+  const next = round.newsQueue.shift()!;
+  round.news = { text: next.text, since: round.elapsed, until: round.elapsed + next.seconds };
 }
 
 /**
@@ -695,7 +723,7 @@ function spawnSnatcher(round: Round) {
     kind: "snatcher", id: 100 + round.fxSeq, point: { ...office.exit }, facing: -Math.PI / 2,
     state: "sneak", target, dazedUntil: 0,
   });
-  announce(round, "The Shift Snatcher is loose! Dash into it (Shift) to save the shift.");
+  announce(round, "The Shift Snatcher is loose! Dash into it (Shift) to save the shift.", 4, true);
 }
 
 function stepToward(point: Point, goal: Point, distance: number) {
@@ -758,7 +786,7 @@ function stepSnatcher(round: Round, seconds: number) {
       card.at = { place: "snatcher" };
       chicken.card = card.id;
       chicken.state = "flee";
-      announce(round, `The Snatcher grabbed ${shifts[chicken.target].label}! Dash into it!`);
+      announce(round, `The Snatcher grabbed ${shifts[chicken.target].label}! Dash into it!`, 4, true);
       fx(round, "snatch", goal, { card: card.id });
     }
     return;
@@ -817,6 +845,7 @@ export function stepRound(round: Round, seconds: number) {
     announce(round, stage === "busy" ? "Busy! Cancellations and the Snatcher are coming." : "Chaos! Everything speeds up.");
   }
 
+  showNextNews(round);
   // Queued open shifts take free tray seats before new requests do.
   placeOpenShifts(round);
   if (round.elapsed >= round.nextSpawn) {

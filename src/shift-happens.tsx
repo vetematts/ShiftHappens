@@ -937,17 +937,30 @@ function Game() {
               <div className="panel panel-menu">
                 <div className="logo"><span className="brand-tag">Shift</span><span className="brand-word">Happens!</span></div>
                 <p className="tagline">You’re helper critters inside the rostering system. Move every shift request through and pin the whole week before time runs out.</p>
-                <BigButton tone="primary" icon="▶" title="Quick play" note="Sample café · 2 minutes · 2–4 players" onClick={() => start("quick")} />
+                <div className="count" role="group" aria-labelledby="count-label">
+                  <p id="count-label" className="count-label">How many players?</p>
+                  <div className="count-options">
+                    {[2, 3, 4].map(n => (
+                      <button type="button" key={n} aria-pressed={players === n} disabled={n < seatsNeeded(phoneSeats)}
+                        onClick={() => setCount(n)}>
+                        <span className="count-critters" aria-hidden="true">{critters.slice(0, n).map(critter => critter.emoji).join("")}</span>
+                        <b>{n} players</b>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="count-hint">
+                    <span className="count-keys">
+                      {players === 2
+                        ? "The duck and bunny share one keyboard. Want 3 or 4? Pick it here, then add phones."
+                        : `The duck and bunny share the keyboard. The ${players === 3 ? "cat joins" : "cat and frog join"} with ${players === 3 ? "a phone" : "phones"}: tap Phones below.`}
+                    </span>
+                    <span className="count-touch">Everyone else joins on their own phone: tap Phones below and they scan the code.</span>
+                  </p>
+                </div>
+                <BigButton tone="primary" icon="▶" title="Quick play" note={`Sample café · 2 minutes · ${players} players`} onClick={() => start("quick")} />
                 <BigButton tone="roster" icon="📋" title="Roster my team"
                   note={custom && savedKind ? `Continue your ${savedKind.label.toLowerCase()} week · ${team.people.length} people` : "Your staff and shifts in, a real roster out"}
                   onClick={() => setSetup(true)} />
-                <div className="count" role="group" aria-label="Number of players">
-                  <span>Players</span>
-                  {[2, 3, 4].map(n => (
-                    <button type="button" key={n} aria-pressed={players === n} disabled={n < seatsNeeded(phoneSeats)}
-                      onClick={() => setCount(n)}>{critters[n - 1].emoji} {n}</button>
-                  ))}
-                </div>
                 <div className="tiles">
                   <button type="button" className="tile" data-on={Boolean(phones)} onClick={() => (phones ? setPhones(null) : startPhones())}>
                     <span className="tile-icon tile-icon--phones" aria-hidden="true">📱</span><b>Phones</b><small>{phones ? "Turn off" : "as controllers"}</small>

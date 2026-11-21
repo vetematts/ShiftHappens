@@ -396,6 +396,8 @@ export type Round = {
   fxSeq: number;
   /** Latest office news for the interface, such as a cancellation. */
   news: { text: string; until: number };
+  /** Cancellation excuses still to use this round, as indexes into `excuses`, so none repeats until all are used. */
+  excuseDeck: number[];
   custom: boolean;
 };
 
@@ -552,6 +554,7 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     fx: [],
     fxSeq: 0,
     news: { text: "", until: 0 },
+    excuseDeck: shuffle(excuses.map((_, i) => i)),
     custom,
   };
 }
@@ -570,8 +573,51 @@ function notify(round: Round, player: Player, message: string) {
   player.messageUntil = round.elapsed + 2.2;
 }
 
-function announce(round: Round, text: string) {
-  round.news = { text, until: round.elapsed + 4 };
+function announce(round: Round, text: string, seconds = 4) {
+  round.news = { text, until: round.elapsed + seconds };
+}
+
+/**
+ * Why people cancel. Each follows "Sam can't make Mon AM: …". Keep them kind and family friendly, and use
+ * "they/their" so they fit anyone on any team.
+ */
+export const excuses = [
+  "their goldfish died and the funeral is at noon.",
+  "their goldfish needs emotional support.",
+  "they got their head stuck in the fence. Again.",
+  "the cat is asleep on their car keys and won't budge.",
+  "they're stuck in a lift with a mime.",
+  "they accidentally glued themselves to the couch.",
+  "their nan challenged them to a dance-off.",
+  "a seagull stole their uniform.",
+  "their smart fridge has locked them out of the house.",
+  "their pet rock is feeling unwell.",
+  "they ate servo sushi last night.",
+  "their phone autocorrected \"yes\" to \"never\".",
+  "they're on hold with the bank. Day three.",
+  "the neighbour's peacock has them trapped indoors.",
+  "they won a lifetime supply of cheese and have to guard it.",
+  "they lost a bet and their eyebrows are gone.",
+  "they dreamt they already worked the shift.",
+  "their horoscope said \"absolutely not\".",
+  "it's their hamster's graduation.",
+  "a magpie has declared war on them.",
+  "they fell asleep on the bus and woke up in another town.",
+  "their sourdough starter is having a crisis.",
+  "a parcel is arriving \"between 7am and 7pm\".",
+  "the toddler hid the car keys in the toaster.",
+  "the dog ate the roster. And the car keys.",
+  "they were crowned bingo champion and have official duties.",
+  "nan needs the Wi-Fi fixed. Again.",
+  "a bin chicken stole their lunch and they're going after it.",
+  "their twin is pretending to be them, badly.",
+  "they're too deep into a jigsaw puzzle to stop now.",
+];
+
+/** The next excuse from this round's shuffled deck, starting a fresh shuffle once they've all been used. */
+function nextExcuse(round: Round) {
+  if (!round.excuseDeck.length) round.excuseDeck = shuffle(excuses.map((_, i) => i));
+  return excuses[round.excuseDeck.pop()!];
 }
 
 function makeCard(round: Round, kind: CardKind, day: number, at: CardPlace, worker?: number): Card {
@@ -635,7 +681,8 @@ function cancelShift(round: Round) {
   card.kind = "cancelled";
   card.approved = false;
   const who = card.worker === undefined ? "Someone" : round.staff[card.worker].name;
-  announce(round, `${who} cancelled ${shifts[slot].label}! Pull the red card and shred it.`);
+  // A little longer on screen than other news, so there's time to enjoy the excuse
+  announce(round, `${who} can't make ${shifts[slot].label}: ${nextExcuse(round)} Shred the red card!`, 6);
   fx(round, "cancel", slotFloor(slot), { card: card.id });
 }
 

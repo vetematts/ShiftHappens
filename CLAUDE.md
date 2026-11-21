@@ -22,7 +22,7 @@ node --experimental-strip-types scripts/simulate.ts 1 verbose  # one round, prin
 node scripts/smoke.mjs   # after npm run build: plays the build in headless Edge or Chrome, screenshots to smoke-out/
 ```
 
-There is no unit test suite. The simulator is the check for rule changes. On Node 22.18+ the `--experimental-strip-types` flag can be dropped. CI (`.github/workflows/pages-demo.yml`) runs typecheck and lint on pushes and PRs to `main`, but they don't block the deploy. Every push to `main` publishes to Pages.
+There is no unit test suite. The simulator is the check for rule changes: it also counts finished rosters that break a rule (wrong role, a day off, two shifts in a day, too many shifts), which should stay at 0. On Node 22.18+ the `--experimental-strip-types` flag can be dropped. CI (`.github/workflows/pages-demo.yml`) runs typecheck and lint on pushes and PRs to `main`, but they don't block the deploy. Every push to `main` publishes to Pages.
 
 URL switches for testing in the browser:
 - `?debug` exposes `shiftHappens.round()` in the console (e.g. `shiftHappens.round().elapsed = 75` to skip to Busy).

@@ -587,17 +587,27 @@ const freeSeat = (round: Round) => {
 /** Slots on this day the week needs that nobody (not even a cancelled card) is in. */
 const emptySlots = (round: Round, day: number) => [day, day + 7].filter(slot => round.needed[slot] && round.board[slot] === undefined);
 
+/** The role of the employee on a card, if it has one. */
+const workerRole = (round: Round, card: Card) => (card.worker === undefined ? undefined : round.staff[card.worker]?.role);
+
 /**
- * How many more cards this day needs. Every empty slot needs one card; every card already heading for this day
- * (requests and open shifts off the board, cancelled cards that will become open shifts, cards the Snatcher holds,
- * queued open shifts) is already on its way.
+ * The roles this day still needs a card for. Every empty slot needs one card of its role; every card already heading
+ * for this day (requests and open shifts off the board, cancelled cards that will become open shifts, cards the
+ * Snatcher holds) covers its worker's role, and queued open shifts cover whichever role is left.
  */
-function shortfall(round: Round, day: number) {
-  const empty = emptySlots(round, day).length;
-  const incoming = round.cards.filter(card => live(card) && card.day === day && card.at.place !== "board").length
-    + round.openQueue.filter(queued => queued === day).length;
-  return empty - incoming;
+function rolesWanted(round: Round, day: number) {
+  const wanted = emptySlots(round, day).map(slot => round.slotRoles[slot] ?? "");
+  const cover = (role?: string) => {
+    const index = role === undefined ? -1 : wanted.indexOf(role);
+    wanted.splice(index === -1 ? wanted.length - 1 : index, 1);
+  };
+  round.cards.filter(card => live(card) && card.day === day && card.at.place !== "board").forEach(card => cover(workerRole(round, card)));
+  round.openQueue.filter(queued => queued === day).forEach(() => cover());
+  return wanted;
 }
+
+/** How many more cards this day needs. */
+const shortfall = (round: Round, day: number) => rolesWanted(round, day).length;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Setup
@@ -791,13 +801,36 @@ function makeCard(round: Round, kind: CardKind, day: number, at: CardPlace, work
   return card;
 }
 
-/** Pick an employee to send a request for this day: someone who works that day and isn't already on it. */
+/**
+ * Who could take a shift on this day in this role: they do that role, work that day, aren't already on that day and
+ * have shifts left. That keeps the finished board a roster the team could really work. If nobody fits (the team
+ * setup warns about this), the rules relax one at a time so the round can still finish.
+ */
+function fitting(round: Round, day: number, role?: string) {
+  const active = round.cards.filter(card => live(card) && card.kind !== "cancelled" && card.worker !== undefined);
+  const busy = new Set(active.filter(card => card.day === day).map(card => card.worker));
+  const booked = (id: number) => active.filter(card => card.worker === id).length;
+  const doesRole = (person: Staff) => role === undefined || role === "" || person.role === role;
+  const tests = [
+    (person: Staff) => doesRole(person) && person.days[day] && !busy.has(person.id) && booked(person.id) < person.shifts,
+    (person: Staff) => doesRole(person) && person.days[day] && !busy.has(person.id),
+    (person: Staff) => doesRole(person) && person.days[day],
+    (person: Staff) => doesRole(person),
+    () => true,
+  ];
+  for (const test of tests) {
+    const pool = round.staff.filter(test);
+    if (pool.length) return pool;
+  }
+  return round.staff;
+}
+
+const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
+
+/** Pick an employee to send a request for this day, in a role the day still needs. */
 function requester(round: Round, day: number) {
-  const busy = new Set(round.cards.filter(card => live(card) && card.day === day && card.worker !== undefined)
-    .map(card => card.worker));
-  const keen = round.staff.filter(person => person.days[day] && !busy.has(person.id));
-  const pool = keen.length ? keen : round.staff;
-  return pool[Math.floor(Math.random() * pool.length)].id;
+  const role = pick(rolesWanted(round, day));
+  return pick(fitting(round, day, role)).id;
 }
 
 /** A new Shift Request lands on the tray, for a day that still needs cover. */
@@ -817,7 +850,7 @@ function placeOpenShifts(round: Round) {
     const seat = freeSeat(round);
     if (seat === undefined) return;
     const day = round.openQueue.shift()!;
-    const card = makeCard(round, "open", day, { place: "tray", seat }, coverFor(round));
+    const card = makeCard(round, "open", day, { place: "tray", seat }, coverFor(round, day));
     fx(round, "open", traySpot(seat), { card: card.id });
   }
 }
@@ -827,14 +860,23 @@ const wanderers = (round: Round) => round.npcs.filter((npc): npc is Wanderer => 
 const nameOf = (round: Round, person: number | undefined) =>
   (person === undefined ? undefined : round.staff[person]?.name) ?? "them";
 
-/** Which wandering employee a new open shift is for: preferably someone no other open shift is waiting on. */
-function coverFor(round: Round) {
-  const people = wanderers(round).map(npc => npc.person);
-  if (!people.length) return undefined;
+/**
+ * Which wandering employee a new open shift is for: someone who could really take it (see `fitting`), preferably
+ * with no other open shift waiting on them. If none of the wanderers fits, one of them who isn't wanted becomes
+ * someone from the team who does.
+ */
+function coverFor(round: Round, day: number) {
+  const npcs = wanderers(round);
+  if (!npcs.length) return undefined;
   const waiting = new Set(round.cards.filter(card => live(card) && card.kind === "open" && !card.approved).map(card => card.worker));
-  const free = people.filter(person => !waiting.has(person));
-  const pool = free.length ? free : people;
-  return pool[Math.floor(Math.random() * pool.length)];
+  const able = new Set(fitting(round, day, pick(rolesWanted(round, day))).map(person => person.id));
+  const free = npcs.filter(npc => !waiting.has(npc.person));
+  const ready = free.filter(npc => able.has(npc.person));
+  if (ready.length) return pick(ready).person;
+  const swap = pick(free.length ? free : npcs);
+  const outside = [...able].filter(id => !npcs.some(npc => npc.person === id));
+  if (outside.length) swap.person = pick(outside);
+  return swap.person;
 }
 
 /** Employees walk from one end of the office to the other, rarely stopping, and step round furniture and players. */
@@ -1465,7 +1507,13 @@ function pinTarget(round: Round, point: Point, card: Card): { slot: number } | {
   if (card.kind === "cancelled") return { why: "Cancelled cards go in the shredder" };
   if (!card.approved) return { why: card.kind === "open" ? `Find ${nameOf(round, card.worker)} first` : "Stamp it at the desk first" };
   if (card.day !== day) return { why: `That's a ${days[card.day]} shift, not ${days[day]}` };
-  const slot = [day, day + 7].find(slot => round.needed[slot] && round.board[slot] === undefined);
+  const role = workerRole(round, card);
+  const open = emptySlots(round, day);
+  const slot = open.find(slot => role === undefined || round.slotRoles[slot] === role);
+  if (slot === undefined && open.length) {
+    const needs = roleIn(round.roles, round.slotRoles[open[0]] ?? "").label.toLowerCase();
+    return { why: `${days[day]} needs ${needs}, not ${roleIn(round.roles, role ?? "").label.toLowerCase()}` };
+  }
   if (slot === undefined) {
     const blocked = [day, day + 7].some(slot => cardIn(round, slot)?.kind === "cancelled");
     return { why: blocked ? `Pull the red card off ${days[day]} first` : `${days[day]} is full` };

@@ -149,6 +149,13 @@ export function createSound() {
     bolt: () => note(1500, 0, 0.08, "sine", 0.03, 2200),
     charge: () => [880, 1320].forEach((tone, i) => note(tone, i * 0.06, 0.1, "square", 0.05)),
     boost: () => note(440, 0, 0.3, "sawtooth", 0.05, 1320),
+    // Glugs from the leaking cooler, a squishy peel, and a whoosh-thud for a slip
+    leak: () => [0, 0.1, 0.2, 0.3].forEach((at, i) => note(520 - i * 60, at, 0.09, "sine", 0.07, 300 - i * 30)),
+    peel: () => note(700, 0, 0.12, "triangle", 0.07, 1050),
+    slip: () => {
+      note(380, 0, 0.18, "sawtooth", 0.05, 1300);
+      note(150, 0.2, 0.25, "sine", 0.14, 70);
+    },
     busy: () => fanfare(1),
     chaos: () => fanfare(1.5),
     win: () => [523, 659, 784, 1047].forEach((tone, i) => note(tone, i * 0.11, 0.32, "triangle", 0.12)),

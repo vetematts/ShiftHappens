@@ -5,6 +5,7 @@
  * the helpers move those request cards through the system: the Request Tray (inbox), the Manager's Desk
  * (approval stamp), across the counter, onto the Roster Board. Cancellations, open shifts that need cover
  * from the wandering employee they are for, and a card-stealing Shift Snatcher keep un-filling the week.
+ * Employees on a break make the floor slippery too: a leaking water cooler and dropped banana peels.
  *
  * Everything the UI and the 3D office need lives in `Round`. One-off moments (a pin, a "nope", a snatch)
  * are pushed onto `round.fx` so the renderer and sound can react without diffing state.
@@ -233,6 +234,26 @@ export const settings = {
   staffBody: .38,
   crowdReach: 1.15,
   crowdSpeed: .65,
+  /** Breaks: one employee at a time pops to the water cooler (which leaks) or eats a banana (and drops the peel). */
+  firstErrand: 14,
+  /** Seconds between one break ending and the next starting. */
+  errandEvery: { calm: 9, busy: 6, chaos: 3.5 } as Record<Stage, number>,
+  /** Employees hurry to the cooler, this many times their strolling speed. */
+  errandPace: 1.8,
+  /** A walk to the cooler that takes longer than this is abandoned. */
+  errandGiveUp: 22,
+  drinkTime: 2.2,
+  snackTime: 2.4,
+  /** The cooler's puddle: full size, seconds to spread, seconds before it dries up. */
+  puddleRadius: 1.3,
+  puddleGrow: 3,
+  puddleLasts: 22,
+  peelLasts: 35,
+  peelRadius: .45,
+  /** A slip: seconds on the floor, how fast you slide, and seconds after getting up before you can slip again. */
+  slipTime: 1.15,
+  slipSlide: 5,
+  slipGrace: 1.3,
   maxPlayers: 4,
 };
 
@@ -264,6 +285,11 @@ export const office = {
   exit: { x: 11.1, z: -4.3 },
   /** Where players start, by player index. */
   spawns: [{ x: -6.6, z: 2.6 }, { x: -.6, z: -1.7 }, { x: 3.5, z: 2.6 }, { x: -5.0, z: -2.1 }],
+  /** Where an employee stands to drink from the water cooler, and the open floor they walk via to get round the tray. */
+  coolerSpot: { x: -10.55, z: 5.6 },
+  coolerWay: { x: -10.6, z: 1.5 },
+  /** Where the leaking cooler's puddle spreads: on the open floor beside the Request Tray. */
+  puddle: { x: -9.1, z: 2.75 },
 };
 
 /** A solid piece of furniture: centre plus full width (x) and depth (z). */
@@ -369,6 +395,8 @@ export type Npc =
     /** Seconds without progress; past a limit they pick somewhere else to go. */
     stuck: number;
     moving: boolean;
+    /** On a break: heading to the cooler, or stood drinking or eating until `errand.until`. */
+    errand?: Errand;
   }
   /** The bin chicken that steals pinned cards and runs for the exit. */
   | {
@@ -404,19 +432,31 @@ export type Player = {
   nextCharge: number;
   /** round.elapsed until which a ⚡ speed boost lasts. */
   boostUntil: number;
+  /** round.elapsed until which the player is on the floor after slipping. */
+  fallenUntil: number;
+  /** round.elapsed before which they can't slip again (a moment to get clear after getting up). */
+  steadyUntil: number;
+  /** How fast they're sliding along the floor after a slip. */
+  slide: Point;
 };
 
 /** A ⚡ lying on the floor. Walk over it to pick it up. */
 export type Bolt = { id: number; point: Point; born: number };
 
+/** An employee's break. While `going`, `until` is when they give up on the walk; while `busy`, when they finish. */
+export type Errand = { kind: "water" | "banana"; stage: "going" | "busy"; until: number };
+
+/** Something slippery on the floor. A puddle spreads and dries up; a peel stays until someone slips on it. */
+export type Hazard = { id: number; kind: "puddle" | "peel"; point: Point; born: number; until: number };
+
 /** What each critter did this round, for the awards on the end screen and the phones. */
-export type Stats = { pinned: number; stamped: number; passed: number; shredded: number; accepted: number; rescues: number };
-const noStats = (): Stats => ({ pinned: 0, stamped: 0, passed: 0, shredded: 0, accepted: 0, rescues: 0 });
+export type Stats = { pinned: number; stamped: number; passed: number; shredded: number; accepted: number; rescues: number; slips: number };
+const noStats = (): Stats => ({ pinned: 0, stamped: 0, passed: 0, shredded: 0, accepted: 0, rescues: 0, slips: 0 });
 
 export type FxKind =
   | "spawn" | "pick" | "put" | "stamp" | "pin" | "nope" | "cancel" | "shred" | "open" | "accept"
   | "snatch" | "knock" | "rescue" | "escape" | "dash" | "busy" | "chaos" | "win" | "lose"
-  | "warn" | "bolt" | "charge" | "boost";
+  | "warn" | "bolt" | "charge" | "boost" | "leak" | "peel" | "slip";
 
 /** A one-off moment for the renderer and sound. `id` only ever increases within a round. */
 export type Fx = { id: number; kind: FxKind; x: number; z: number; player?: number; card?: number };
@@ -449,6 +489,10 @@ export type Round = {
   bolts: Bolt[];
   nextBolt: number;
   boltSeq: number;
+  /** When the next employee goes on a break (Infinity while someone is on one), and how many breaks so far. */
+  nextErrand: number;
+  breaks: number;
+  hazards: Hazard[];
   stats: Stats[];
   fx: Fx[];
   fxSeq: number;
@@ -560,6 +604,7 @@ function makePlayer(index: number): Player {
     position: { ...office.spawns[index] }, facing: index % 2 ? Math.PI : 0, moving: false, stamping: false,
     message: "", messageUntil: 0, dashUntil: 0, dashReady: 0,
     charges: settings.dashCharges, nextCharge: Infinity, boostUntil: 0,
+    fallenUntil: 0, steadyUntil: 0, slide: { x: 0, z: 0 },
   };
 }
 
@@ -637,6 +682,9 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     bolts: [],
     nextBolt: 10,
     boltSeq: 0,
+    nextErrand: settings.firstErrand,
+    breaks: 0,
+    hazards: [],
     stats: Array.from({ length: count }, noStats),
     fx: [],
     fxSeq: 0,
@@ -718,23 +766,37 @@ function coverFor(round: Round) {
 /** Employees walk from one end of the office to the other, rarely stopping, and step round furniture and players. */
 function stepStaff(round: Round, seconds: number) {
   const people = wanderers(round);
+  // Where to walk next: the cooler while on the way for a drink (stepping aside first if something's in the way),
+  // otherwise the far end of the room
+  const nextPath = (npc: Wanderer, free?: (next: Point) => boolean) => {
+    if (npc.errand?.stage !== "going") return routeTo(npc.point, farSpot(npc.point));
+    const aside = free ? sidestep(npc, free) : undefined;
+    return aside ? [aside, ...coolerPath(aside)] : coolerPath(npc.point);
+  };
   people.forEach(npc => {
     npc.moving = false;
+    if (stepBreak(round, npc)) return;
     if (round.elapsed < npc.waitUntil) return;
-    if (!npc.path.length) npc.path = routeTo(npc.point, farSpot(npc.point));
+    if (!npc.path.length) npc.path = nextPath(npc);
     const goal = npc.path[0];
     const dx = goal.x - npc.point.x;
     const dz = goal.z - npc.point.z;
     const length = Math.hypot(dx, dz);
     if (length < .1) {
       npc.path.shift();
+      if (!npc.path.length && npc.errand?.stage === "going") {
+        // At the cooler: stop and have a drink
+        npc.errand = { ...npc.errand, stage: "busy", until: round.elapsed + settings.drinkTime };
+        npc.facing = Math.atan2(furniture.cooler.x - npc.point.x, furniture.cooler.z - npc.point.z);
+        return;
+      }
       if (!npc.path.length) {
         npc.path = routeTo(npc.point, farSpot(npc.point));
         if (Math.random() < settings.staffPauseChance) npc.waitUntil = round.elapsed + .8 + Math.random() * .7;
       }
       return;
     }
-    const step = Math.min(length, settings.staffSpeed * seconds);
+    const step = Math.min(length, settings.staffSpeed * (npc.errand ? settings.errandPace : 1) * seconds);
     const ux = dx / length * step;
     const uz = dz / length * step;
     // Like players, they never step closer to someone they're touching, but can always step away
@@ -753,7 +815,7 @@ function stepStaff(round: Round, seconds: number) {
       npc.stuck += seconds;
       if (npc.stuck > 1.2) {
         npc.stuck = 0;
-        npc.path = routeTo(npc.point, farSpot(npc.point));
+        npc.path = nextPath(npc, free);
       }
       return;
     }
@@ -761,10 +823,158 @@ function stepStaff(round: Round, seconds: number) {
     npc.stuck = progress < step * .3 ? npc.stuck + seconds : 0;
     if (npc.stuck > 1.2) {
       npc.stuck = 0;
-      npc.path = routeTo(npc.point, farSpot(npc.point));
+      npc.path = nextPath(npc, free);
     }
     npc.point = next;
     npc.moving = true;
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Breaks and slippery floors
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The walk to the water cooler, round the north side of the Request Tray. */
+function coolerPath(from: Point): Point[] {
+  const nearby = from.z > 0 && from.x < office.coolerWay.x + .5;
+  return nearby ? [{ ...office.coolerSpot }] : [...routeTo(from, office.coolerWay), { ...office.coolerSpot }];
+}
+
+/** Length of a walk along a path. */
+function pathLength(from: Point, path: Point[]) {
+  let length = 0;
+  let at = from;
+  for (const point of path) {
+    length += Math.hypot(point.x - at.x, point.z - at.z);
+    at = point;
+  }
+  return length;
+}
+
+/**
+ * A spot off to one side of an employee's way, to get round someone standing in it: the first direction, from
+ * nearly ahead round to straight back, that they can set off in.
+ */
+function sidestep(npc: Wanderer, free: (next: Point) => boolean): Point | undefined {
+  const goal = npc.path[0] ?? office.coolerSpot;
+  const heading = Math.atan2(goal.x - npc.point.x, goal.z - npc.point.z);
+  const side = Math.random() < .5 ? 1 : -1;
+  for (const turn of [.33, .5, .67, .85, 1]) {
+    for (const way of [side, -side]) {
+      const angle = heading + way * turn * Math.PI;
+      const ahead = (reach: number) => ({ x: npc.point.x + Math.sin(angle) * reach, z: npc.point.z + Math.cos(angle) * reach });
+      if (walkable(ahead(1.6), settings.staffBody) && free(ahead(.05))) return ahead(1.6);
+    }
+  }
+  return undefined;
+}
+
+/** One employee at a time takes a break: the one nearest the cooler goes for a drink, or someone eats a banana. */
+function startBreak(round: Round) {
+  const people = wanderers(round);
+  if (!people.length || people.some(npc => npc.errand)) return false;
+  const wet = round.hazards.some(hazard => hazard.kind === "puddle");
+  round.breaks++;
+  if (!wet && round.breaks % 2 === 1) {
+    const reach = (npc: Wanderer) => pathLength(npc.point, coolerPath(npc.point));
+    const npc = people.reduce((best, next) => (reach(next) < reach(best) ? next : best));
+    npc.errand = { kind: "water", stage: "going", until: round.elapsed + settings.errandGiveUp };
+    npc.path = coolerPath(npc.point);
+    npc.waitUntil = 0;
+    npc.stuck = 0;
+    return true;
+  }
+  // A banana: they stop where they are, eat it, and leave the peel behind
+  const npc = people[Math.floor(Math.random() * people.length)];
+  npc.errand = { kind: "banana", stage: "busy", until: round.elapsed + settings.snackTime };
+  return true;
+}
+
+/** Moves an employee's break along. Returns true while they are stood still drinking or eating. */
+function stepBreak(round: Round, npc: Wanderer) {
+  const errand = npc.errand;
+  if (!errand) return false;
+  if (errand.stage === "going") {
+    // Couldn't get to the cooler in time: carry on wandering
+    if (round.elapsed >= errand.until) finishBreak(round, npc);
+    return false;
+  }
+  if (round.elapsed < errand.until) return true;
+  if (errand.kind === "water") leak(round);
+  else dropPeel(round, npc);
+  finishBreak(round, npc);
+  return true;
+}
+
+function finishBreak(round: Round, npc: Wanderer) {
+  // From the cooler, back out the way they came so the tray doesn't box them into the corner
+  const out = npc.errand?.kind === "water" && npc.errand.stage === "busy" ? office.coolerWay : undefined;
+  npc.errand = undefined;
+  npc.path = out ? [{ ...out }, ...routeTo(out, farSpot(out))] : routeTo(npc.point, farSpot(npc.point));
+  npc.stuck = 0;
+  round.nextErrand = round.elapsed + settings.errandEvery[round.stage];
+}
+
+/** The cooler springs a leak: a puddle spreads on the floor beside the Request Tray. */
+function leak(round: Round) {
+  round.hazards = round.hazards.filter(hazard => hazard.kind !== "puddle");
+  round.hazards.push({ id: ++round.fxSeq, kind: "puddle", point: { ...office.puddle }, born: round.elapsed, until: round.elapsed + settings.puddleLasts });
+  announce(round, "The water cooler is leaking! Mind the puddle by the tray.");
+  fx(round, "leak", furniture.cooler);
+}
+
+function dropPeel(round: Round, npc: Wanderer) {
+  const point = { ...npc.point };
+  round.hazards.push({ id: ++round.fxSeq, kind: "peel", point, born: round.elapsed, until: round.elapsed + settings.peelLasts });
+  announce(round, `${nameOf(round, npc.person)} dropped a banana peel! Don't slip.`);
+  fx(round, "peel", point);
+}
+
+/** How far a hazard reaches right now: a puddle spreads quickly, then shrinks as it dries. */
+export function hazardRadius(round: Round, hazard: Hazard) {
+  if (hazard.kind === "peel") return settings.peelRadius;
+  const spread = Math.min(1, Math.max(0, (round.elapsed - hazard.born) / settings.puddleGrow));
+  const drying = Math.min(1, Math.max(0, (hazard.until - round.elapsed) / 3));
+  return settings.puddleRadius * Math.sqrt(spread) * drying;
+}
+
+/** Whether a player is on the floor after slipping. */
+export const isFallen = (round: Round, index: number) => round.elapsed < (round.players[index]?.fallenUntil ?? 0);
+
+function hazardUnder(round: Round, point: Point) {
+  return round.hazards.find(hazard => round.elapsed < hazard.until
+    && Math.hypot(point.x - hazard.point.x, point.z - hazard.point.z) < hazardRadius(round, hazard) * (hazard.kind === "puddle" ? .85 : 1));
+}
+
+/** Down they go: they slide, drop what they carry a little way ahead, and lie there for a moment. */
+function slip(round: Round, index: number, hazard: Hazard) {
+  const player = round.players[index];
+  stopStamp(round, index);
+  const speed = settings.slipSlide * (isDashing(round, index) ? 1.4 : 1);
+  player.slide = { x: Math.sin(player.facing) * speed, z: Math.cos(player.facing) * speed };
+  player.fallenUntil = round.elapsed + settings.slipTime;
+  player.steadyUntil = player.fallenUntil + settings.slipGrace;
+  player.dashUntil = 0;
+  if (player.holding !== undefined) {
+    const ahead = { x: player.position.x + Math.sin(player.facing) * 1.1, z: player.position.z + Math.cos(player.facing) * 1.1 };
+    release(round, index, { place: "floor", point: walkable(ahead) ? ahead : { ...player.position } });
+  }
+  if (hazard.kind === "peel") hazard.until = round.elapsed;
+  round.stats[index].slips++;
+  notify(round, player, hazard.kind === "peel" ? "Banana peel! Whoops!" : "Slipped in the puddle!");
+  fx(round, "slip", player.position, { player: index });
+}
+
+function stepHazards(round: Round) {
+  if (round.elapsed >= round.nextErrand) round.nextErrand = startBreak(round) ? Infinity : round.elapsed + 1;
+  // Puddles dry up and used peels get swept away
+  round.hazards = round.hazards.filter(hazard => round.elapsed < hazard.until);
+  // Walking or dashing through something slippery knocks you over; standing still in it is fine
+  round.players.forEach((player, i) => {
+    if (isFallen(round, i) || round.elapsed < player.steadyUntil) return;
+    if (!player.moving && !isDashing(round, i)) return;
+    const hazard = hazardUnder(round, player.position);
+    if (hazard) slip(round, i, hazard);
   });
 }
 
@@ -895,6 +1105,24 @@ function stepSnatcher(round: Round, seconds: number) {
     }
   }
 
+  // It slips on banana peels too, dropping whatever it stole
+  if (chicken.state !== "dazed") {
+    const peel = round.hazards.find(hazard => hazard.kind === "peel" && round.elapsed < hazard.until
+      && Math.hypot(hazard.point.x - chicken.point.x, hazard.point.z - chicken.point.z) <= settings.peelRadius + .15);
+    if (peel) {
+      peel.until = round.elapsed;
+      chicken.state = "dazed";
+      chicken.dazedUntil = round.elapsed + settings.snatcherDaze * 1.6;
+      fx(round, "slip", chicken.point);
+      if (chicken.card !== undefined) {
+        round.cards[chicken.card].at = { place: "floor", point: { x: chicken.point.x, z: Math.max(chicken.point.z, office.boardZ + .9) } };
+        chicken.card = undefined;
+        announce(round, "The Snatcher slipped on a banana peel and dropped the card! Grab it!");
+      }
+      return;
+    }
+  }
+
   if (chicken.state === "dazed") {
     if (round.elapsed >= chicken.dazedUntil) chicken.state = "flee";
     return;
@@ -994,6 +1222,7 @@ export function stepRound(round: Round, seconds: number) {
   stepStaff(round, seconds);
   stepBolts(round);
   stepSnatcher(round, seconds);
+  stepHazards(round);
 
   round.players.forEach((player, i) => {
     const card = heldCard(round, i);
@@ -1032,6 +1261,19 @@ export function walk(round: Round, index: number, dx: number, dz: number, second
   if (!player) return;
   player.moving = false;
   if (round.phase !== "playing") return;
+  if (isFallen(round, index)) {
+    // On their back, sliding to a stop: no steering until they get up
+    const x = player.position.x + player.slide.x * seconds;
+    const z = player.position.z + player.slide.z * seconds;
+    if (walkable({ x, z: player.position.z })) player.position.x = x;
+    else player.slide.x = 0;
+    if (walkable({ x: player.position.x, z })) player.position.z = z;
+    else player.slide.z = 0;
+    const fade = Math.exp(-seconds * 5);
+    player.slide.x *= fade;
+    player.slide.z *= fade;
+    return;
+  }
   let length = Math.hypot(dx, dz);
   const dashing = isDashing(round, index);
   if (!length && dashing) {
@@ -1069,7 +1311,7 @@ export function walk(round: Round, index: number, dx: number, dz: number, second
 /** Shift: a short burst of speed. Dashing into the Snatcher knocks it over. */
 export function dash(round: Round, index: number) {
   const player = round.players[index];
-  if (!player || round.phase !== "playing" || round.elapsed < player.dashReady) return;
+  if (!player || round.phase !== "playing" || round.elapsed < player.dashReady || isFallen(round, index)) return;
   if (player.charges <= 0) {
     notify(round, player, "Out of dash! Grab a ⚡ or wait for it to recharge.");
     return;
@@ -1166,6 +1408,7 @@ function deskHint(card: Card) {
 export function nextAction(round: Round, index: number) {
   const player = round.players[index];
   if (!player) return "";
+  if (isFallen(round, index)) return "Whoops! Getting up…";
   const { position } = player;
   const card = heldCard(round, index);
   if (!card) {
@@ -1211,7 +1454,7 @@ function release(round: Round, index: number, at: CardPlace) {
 export function interact(round: Round, index: number) {
   if (round.phase !== "playing") return;
   const player = round.players[index];
-  if (!player) return;
+  if (!player || isFallen(round, index)) return;
   const { position } = player;
   const card = heldCard(round, index);
 

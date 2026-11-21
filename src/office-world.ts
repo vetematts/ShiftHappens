@@ -2,9 +2,9 @@ import * as T from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
-  atBoard, atDesk, atShredder, atTray, cardIn, columnAt, columnGap, columnX, days, furniture, heldCard, isDashing,
-  office, settings, staffInReach, traySpot, wantedBy,
-  type Card, type Fx, type Npc, type Round,
+  atBoard, atDesk, atShredder, atTray, cardIn, columnAt, columnGap, columnX, days, furniture, hazardRadius, heldCard,
+  isDashing, isFallen, office, settings, staffInReach, traySpot, wantedBy,
+  type Card, type Fx, type Hazard, type Npc, type Round,
 } from "./round";
 import type { Sound } from "./sound";
 
@@ -855,6 +855,20 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     const brim = parts.add(head, new T.Mesh(cylinderGeometry, hat), 0, .15, .2, .2, .025, .15);
     crown.castShadow = brim.castShadow = true;
     const feet = [-1, 1].map(side => ball(body, 0x7a6a8c, side * .14, .06, .08, .1, .055, .14));
+    // What they hold on a break: a cup of water, or a banana
+    const cup = new T.Group();
+    cup.position.set(.24, .58, .28);
+    body.add(cup);
+    cylinder(cup, colours.white, 0, 0, 0, .08, .18);
+    cylinder(cup, 0x8fd6ff, 0, .085, 0, .066, .014);
+    cup.visible = false;
+    const banana = new T.Group();
+    banana.position.set(.26, .62, .26);
+    banana.rotation.z = .55;
+    body.add(banana);
+    parts.capsule(banana, 0xffd84d, 0, 0, 0, .065, .13, .065);
+    ball(banana, 0x6b4a2b, 0, .21, 0, .026, .032, .026);
+    banana.visible = false;
     const tagSurface = new T.SpriteMaterial({ depthTest: false, depthWrite: false });
     ownMaterials.push(tagSurface);
     const tag = new T.Sprite(tagSurface);
@@ -878,7 +892,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     root.add(beam);
     root.visible = false;
     scene.add(root);
-    return { root, body, head, tag, ring, beam, feet, skin, hat, key: "", bubble: "", born: -10, popped: -10, facing: 0, phase: 0 };
+    return { root, body, head, tag, ring, beam, feet, cup, banana, skin, hat, key: "", bubble: "", born: -10, popped: -10, facing: 0, phase: 0 };
   }
   const crew = new Map<number, ReturnType<typeof makeCrew>>();
   const bubbleTextures = new Map<string, T.Texture>();
@@ -1018,6 +1032,21 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   // Players
   const critters: Critter[] = critterKinds.map((kind, i) => makeCritter(kind, playerColours[i], parts));
+  // Stars that circle a critter's head after it slips
+  const dizzyMaterial = new T.MeshBasicMaterial({ color: 0xffe066, toneMapped: false });
+  ownMaterials.push(dizzyMaterial);
+  const dizzy = critters.map(() => {
+    const group = new T.Group();
+    for (let i = 0; i < 3; i++) {
+      const star = new T.Mesh(parts.sphere, dizzyMaterial);
+      star.scale.setScalar(.1);
+      star.position.set(Math.cos(i * 2.094) * .5, 0, Math.sin(i * 2.094) * .5);
+      group.add(star);
+    }
+    group.visible = false;
+    scene.add(group);
+    return group;
+  });
   critters.forEach(critter => {
     critter.root.scale.setScalar(1.35);
     scene.add(critter.root);
@@ -1158,6 +1187,9 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   // Floating words
   const words = {
+    leak: sign("Leak!", "#8fd6ff"),
+    peel: sign("Banana!", "#ffe066"),
+    slip: sign("Whoops!", "#ffb3c2"),
     stamp: sign("Stamped!", "#5fe39a"),
     pin: sign("Rostered!", "#ffd35c"),
     nope: sign("Nope!", "#ff8fb0"),
@@ -1499,6 +1531,22 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(puffs, { x, y: .8, z }, 7, { colours: [0xffb347, 0xfff27a], speed: 1.3, up: .8, gravity: 0, life: .55, size: .9 });
         popup("boost", x, 2.9, z, .85);
         break;
+      case "leak":
+        popup("leak", furniture.cooler.x + .7, 2.5, furniture.cooler.z, .9);
+        emit(puffs, { x: furniture.cooler.x + .3, y: .5, z: furniture.cooler.z - .2 }, 10, { colours: [0x8fd6ff, 0xffffff], speed: 1.2, up: .6, gravity: 0, life: .7, size: .9 });
+        shake = Math.max(shake, .06);
+        break;
+      case "peel":
+        popup("peel", x, 2.1, z, .75);
+        emit(puffs, { x, y: .3, z }, 6, { colours: [0xffe066, 0xfff6e6], speed: .8, up: .5, gravity: 0, life: .5, size: .8 });
+        break;
+      case "slip":
+        shake = Math.max(shake, .16);
+        squash(event.player, -6);
+        popup("slip", x, 2.6, z, .9);
+        emit(confetti, { x, y: 1.3, z }, 10, { colours: starColours, speed: 1.6, up: 2.6, gravity: 6, life: .9, size: .8 });
+        emit(puffs, { x, y: .1, z }, 8, { colours: [0x8fd6ff, 0xffffff], speed: 1.4, up: .5, gravity: 0, life: .5, size: .9 });
+        break;
       case "busy":
         break;
       case "chaos":
@@ -1682,6 +1730,15 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       member.body.position.y = still ? 0 : walking ? Math.abs(Math.sin(step)) * .09 : Math.max(0, Math.sin(now * 2.4 + npc.id * 2)) * .05;
       member.body.rotation.z = walking && !still ? Math.sin(step) * .12 : 0;
       member.head.rotation.z = still ? 0 : Math.sin(now * 2 + npc.id) * .06;
+      const errand = npc.errand;
+      const busy = errand?.stage === "busy" && round.phase === "playing";
+      member.head.rotation.x = busy && !still ? (errand.kind === "water" ? -.35 + Math.sin(now * 3) * .05 : Math.sin(now * 12) * .12) : 0;
+      member.cup.visible = errand?.kind === "water" && errand.stage === "busy";
+      member.banana.visible = errand?.kind === "banana";
+      if (member.banana.visible) {
+        const left = Math.max(.25, (errand!.until - round.elapsed) / settings.snackTime);
+        member.banana.scale.set(1, left, 1);
+      }
       member.feet.forEach((foot, side) => {
         const swing = walking ? Math.sin(step + side * Math.PI) : 0;
         foot.position.z = .08 + swing * .12;
@@ -1831,7 +1888,106 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     });
   }
 
+  // Puddles and banana peels on the floor (the floor tiles' tops are at y .04, the rug's at .08)
+  const puddleSurface = new T.MeshStandardMaterial({ color: 0x5cb8ff, roughness: .05, metalness: .05, transparent: true, opacity: .82, depthWrite: false });
+  const puddleRim = new T.MeshBasicMaterial({ color: 0x3a8fe0, transparent: true, opacity: .55, depthWrite: false, toneMapped: false });
+  const puddleShine = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .6, depthWrite: false, toneMapped: false });
+  ownMaterials.push(puddleSurface, puddleRim, puddleShine);
+  function flatDisc(parent: T.Object3D, surface: T.Material, x: number, z: number, size: number, y = .1) {
+    const disc = new T.Mesh(parts.circle, surface);
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.set(x, y, z);
+    disc.scale.setScalar(size);
+    disc.renderOrder = 1;
+    parent.add(disc);
+    return disc;
+  }
+  function makePuddle() {
+    const group = new T.Group();
+    // A blobby shape from overlapping discs, with a darker rim and a couple of glints
+    const shape = [[0, 0, .95], [.5, .28, .6], [-.52, .26, .55], [.22, -.5, .52], [-.36, -.42, .48]] as const;
+    shape.forEach(([x, z, size]) => flatDisc(group, puddleRim, x, z, size + .07, .095));
+    const lobes = shape.map(([x, z, size]) => flatDisc(group, puddleSurface, x, z, size));
+    flatDisc(group, puddleShine, -.22, -.18, .14, .105);
+    flatDisc(group, puddleShine, .32, .12, .08, .105);
+    scene.add(group);
+    return { group, lobes };
+  }
+  function makePeel() {
+    const group = new T.Group();
+    for (let i = 0; i < 3; i++) {
+      const flap = new T.Group();
+      flap.rotation.y = i * 2.1 + .3;
+      group.add(flap);
+      const piece = parts.capsule(flap, 0xffd84d, 0, .05, .2, .075, .12, .035);
+      piece.rotation.x = Math.PI / 2;
+      ball(flap, 0x8a6a2b, 0, .06, .36, .03, .025, .03);
+    }
+    ball(group, 0xffe58a, 0, .1, 0, .13, .08, .13);
+    ball(group, 0x6b4a2b, 0, .17, 0, .03, .045, .03);
+    scene.add(group);
+    return group;
+  }
+  // A trickle of water from the cooler to its puddle
+  const trickle = new T.Group();
+  scene.add(trickle);
+  flatDisc(trickle, puddleSurface, 0, 0, 1, .098);
+  trickle.visible = false;
+  type HazardObject = { group: T.Group; lobes: T.Mesh[]; born: number };
+  const hazardObjects = new Map<number, HazardObject>();
+  let dripAt = 0;
+
+  function placeHazards(round: Round, now: number) {
+    const still = reducedMotion.matches;
+    const present = new Set<number>();
+    let puddle: Hazard | undefined;
+    for (const hazard of round.hazards) {
+      present.add(hazard.id);
+      let entry = hazardObjects.get(hazard.id);
+      if (!entry) {
+        entry = hazard.kind === "puddle" ? { ...makePuddle(), born: now } : { group: makePeel(), lobes: [], born: now };
+        hazardObjects.set(hazard.id, entry);
+      }
+      entry.group.position.set(hazard.point.x, 0, hazard.point.z);
+      if (hazard.kind === "puddle") {
+        puddle = hazard;
+        // Grow and shrink across the floor only, so it never sinks into the tiles
+        const radius = Math.max(.001, hazardRadius(round, hazard));
+        entry.group.scale.set(radius, 1, radius);
+        entry.lobes.forEach((lobe, i) => lobe.scale.setScalar((i ? .55 : .95) * (still ? 1 : 1 + Math.sin(now * 2.2 + i * 1.7) * .03)));
+      } else {
+        const pop = Math.min(1, (now - entry.born) / .35);
+        entry.group.scale.setScalar(1.6 * Math.max(.001, easeBack(pop)));
+      }
+    }
+    for (const [id, entry] of hazardObjects) {
+      if (present.has(id)) continue;
+      scene.remove(entry.group);
+      hazardObjects.delete(id);
+    }
+    // The trickle runs from the cooler to the puddle while it's there; the cooler drips and wobbles while it spreads
+    trickle.visible = Boolean(puddle);
+    let leaking = false;
+    if (puddle) {
+      const from = { x: furniture.cooler.x + .2, z: furniture.cooler.z - .25 };
+      const dx = puddle.point.x - from.x;
+      const dz = puddle.point.z - from.z;
+      const length = Math.hypot(dx, dz);
+      const width = Math.max(.001, hazardRadius(round, puddle) / settings.puddleRadius) * .22;
+      trickle.position.set((from.x + puddle.point.x) / 2, 0, (from.z + puddle.point.z) / 2);
+      trickle.rotation.y = Math.atan2(dx, dz);
+      trickle.scale.set(width, 1, length / 2);
+      leaking = round.elapsed - puddle.born < settings.puddleGrow + 3;
+      if (leaking && !still && now > dripAt) {
+        dripAt = now + .12;
+        emit(puffs, { x: furniture.cooler.x + .3, y: .35, z: furniture.cooler.z - .15 }, 1, { colours: [0x8fd6ff, 0xbfe8ff], speed: .3, up: .1, gravity: 0, life: .5, size: .6 });
+      }
+    }
+    cooler.rotation.z = leaking && !still ? Math.sin(now * 28) * .02 : 0;
+  }
+
   function placeWorld(round: Round, now: number, dt: number) {
+    placeHazards(round, now);
     const still = reducedMotion.matches;
     highlight(round, now);
     placeSnatcher(round, now, dt);
@@ -1871,9 +2027,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       root.rotation.y = critter.facing;
 
       const moving = player.moving && round.phase === "playing";
+      const fallen = isFallen(round, i);
       if (moving) critter.phase += dt * 14;
       const step = critter.phase;
-      const bob = moving && !still ? Math.abs(Math.sin(step)) * .12 : 0;
+      const bob = fallen ? .16 : moving && !still ? Math.abs(Math.sin(step)) * .12 : 0;
       critter.squashSpeed += (-critter.squash * 160 - critter.squashSpeed * 11) * dt;
       critter.squash += critter.squashSpeed * dt;
       const squashBy = still ? 0 : T.MathUtils.clamp(critter.squash * .09, -.18, .22);
@@ -1881,11 +2038,17 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       body.position.y = bob;
       body.scale.set(1 + squashBy * .6, breathe * (1 - squashBy), 1 + squashBy * .6);
       body.rotation.z = moving && !still ? Math.sin(step) * .11 : 0;
-      body.rotation.x = T.MathUtils.lerp(body.rotation.x, player.stamping ? .22 : moving ? .1 : 0, 1 - Math.exp(-dt * 10));
+      body.rotation.x = T.MathUtils.lerp(body.rotation.x, fallen ? -1.35 : player.stamping ? .22 : moving ? .1 : 0, 1 - Math.exp(-dt * (fallen ? 16 : 10)));
+      const stars = dizzy[i];
+      stars.visible = fallen;
+      if (fallen) {
+        stars.position.set(player.position.x, 1.45, player.position.z);
+        stars.rotation.y = now * 7;
+      }
       head.rotation.x = player.stamping && !still ? Math.sin(now * 18) * .08 : 0;
 
       feet.forEach((foot, side) => {
-        const swing = moving ? Math.sin(step + side * Math.PI) : 0;
+        const swing = fallen && !still ? Math.sin(now * 20 + side * Math.PI) : moving ? Math.sin(step + side * Math.PI) : 0;
         foot.position.z = .1 + swing * .15;
         foot.position.y = .07 + Math.max(0, swing) * .07;
       });
@@ -1894,6 +2057,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         let raise = moving ? Math.sin(step + side * Math.PI) * .6 : Math.sin(now * 2 + side) * .06;
         if (holding) raise = -2.75 + Math.sin(now * 3) * .04;
         if (player.stamping) raise = -1.3 + Math.sin(now * 18 + side) * .45;
+        if (fallen) raise = -2.4 + (still ? 0 : Math.sin(now * 16 + side * 2) * .5);
         arm.rotation.x = T.MathUtils.lerp(arm.rotation.x, raise, 1 - Math.exp(-dt * 18));
         arm.rotation.z = holding ? sideSign * -.25 : sideSign * .1;
       });

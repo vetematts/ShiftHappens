@@ -15,8 +15,9 @@ Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edwa
 | 🟨 **Open shift** | It's for one named employee. Their thought bubble flashes while you carry it: chase them down (they wander the office and slow you down if you brush past) and press action next to them to hand it over, then pin it. No stamp needed. |
 | ⚡ **Dash charges** | Each critter has 3 dash charges and one refills every 9 seconds. Grab a ⚡ off the floor to refill one, or for a 4 second speed boost when you're already full. |
 | 🐦 **Shift Snatcher** | A bin chicken sneaks to the board, steals a card and runs for the exit. Dash into it to make it drop the card, then pin it again. If it escapes, the shift becomes an open shift. |
+| 🍌 **Slippery office** | Employees take breaks. One hurries to the water cooler for a drink and it springs a leak: a puddle spreads next to the Request Tray. Another stops to eat a banana and drops the peel. Walk or dash through either and you slip, fall over and drop your card. Standing still in a puddle is safe, puddles dry up after 22 seconds, and the Snatcher slips on peels too. Breaks come more often as the round speeds up. |
 
-The board only takes an approved card, in an empty slot on the card's day. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). The background music speeds up with each stage and again in the last 10 seconds. Fill all 14 slots with no red cards to win. The time left is your score. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever pinned, stamped, passed, shredded and rescued the most.
+The board only takes an approved card, in an empty slot on the card's day. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). The background music speeds up with each stage and again in the last 10 seconds. Fill all 14 slots with no red cards to win. The time left is your score. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever pinned, stamped, passed, shredded and rescued the most, and a Banana Magnet award for whoever slipped the most.
 
 | | Move | Action (hold to stamp) | Dash |
 | --- | --- | --- | --- |
@@ -49,7 +50,7 @@ Like a Jackbox party game, the laptop or projector shows the game and phones bec
 2. A QR code and a four-letter room code appear. Scan the QR code with a phone camera, or select **Copy join link** to send the link instead.
 3. Phones become the duck, the bunny, the cat and the frog, in the order they join. The menu ticks off each one as it connects. The cat and the frog walk into the office as soon as a third or fourth phone joins, even mid-round.
 4. Select **Start round** on a phone, or start from the laptop. A 3-2-1-Go countdown plays on the big screen and every phone, so everyone starts together. Each phone shows a thumb stick, an action button, a dash button, what its critter is holding and what the action button will do next.
-5. Phones flash, and buzz on Android, when their critter stamps or pins a card, and when a shift is cancelled or the Snatcher appears. When the round ends, each phone shows that player's awards and tallies, with a **Play again** button.
+5. Phones flash, and buzz on Android, when their critter stamps or pins a card or slips over, and when a shift is cancelled or the Snatcher appears. When the round ends, each phone shows that player's awards and tallies, with a **Play again** button.
 
 A fifth phone waits and takes over a critter as soon as a phone leaves. If a phone leaves mid-round, its critter puts down the card it was carrying so nobody gets stuck. The keyboard keeps driving the duck and the bunny, so keyboard and phone players can mix.
 
@@ -96,8 +97,8 @@ React and Vite for the page, Three.js for the 3D office, [Fredoka](https://fonts
 
 | File | What it does |
 | --- | --- |
-| `src/round.ts` | All the rules: the starting teams, request cards, stamping, pinning, cancellations, open shifts, the wandering employees, dash charges and ⚡ pickups, the Shift Snatcher, collisions, and every tuning number in `settings` |
-| `src/office-world.ts` | The Three.js office, critters, cards, staff, the Snatcher, board and effects |
+| `src/round.ts` | All the rules: the starting teams, request cards, stamping, pinning, cancellations, open shifts, the wandering employees and their breaks, puddles and banana peels, dash charges and ⚡ pickups, the Shift Snatcher, collisions, and every tuning number in `settings` |
+| `src/office-world.ts` | The Three.js office, critters, cards, staff, the Snatcher, puddles and peels, board and effects |
 | `src/shift-happens.tsx` | The game screen: input, HUD, menu, how to play, results, and the phone lobby |
 | `src/team-setup.tsx` | The **Roster my team** steps: business, roles and shifts, team, week. Saved in the browser |
 | `src/phone-link.ts` | Room codes, join links and the links to phones: peer-to-peer, through the relay, or same-browser |

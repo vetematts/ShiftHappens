@@ -12,8 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc",
-    "lint": "eslint .",
-    "simulate": "node --experimental-strip-types --no-warnings scripts/simulate.ts"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@fontsource-variable/fredoka": "5.3.0",

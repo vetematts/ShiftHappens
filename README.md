@@ -1,6 +1,6 @@
 # Shift Happens!
 
-Overcooked, but for rostering. Two to four critters (a duck, a bunny, a cat and a frog) race around a cosy office signing staff on, passing them over the counter and pinning them onto the weekly roster before the clock runs out. Every staff member has a role, days they can work and a number of shifts, so a finished round is a real roster you can copy and use.
+Overcooked, but for rostering. Two to four helper critters (a duck, a bunny, a cat and a frog) live inside a rostering system. Employees keep sending in shift requests, and the helpers race the request cards through the system to fill all 14 shifts on the week's Roster Board in two minutes. Cancellations and a shift-stealing bin chicken keep un-filling it.
 
 **[Play it now](https://vetematts.github.io/ShiftHappens/)** on a laptop or a phone.
 
@@ -8,29 +8,28 @@ Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edwa
 
 ## How to play
 
-1. Staff wait at the table, each wearing a cap in their role colour (in the sample café: barista pink, kitchen orange, register teal). Their name tag shows the days they can work and the shifts they have left.
-2. Grab someone and hold the action button at the manager's desk to sign them on.
-3. Pass them over the counter to your teammate.
-4. Stand at a day on the board and roster them onto an open shift that matches their role, on a day they can work. In the sample café nobody works two shifts in one day.
-5. After a shift they head home and come back while they have hours left. A sick call knocks someone off the board for that day, so refill those shifts too.
-6. Watch out for the bin chicken. It sneaks along the board, pecks a rostered person off their shift and runs for the side door. Run into it to scare it off, or to make it drop who it took so you can roster them again.
+| Card | What to do |
+| --- | --- |
+| 🟦 **Shift request** | Grab it from the Request Tray, hold the action button at the Manager's Desk to stamp it, pass it over the counter and pin it in its day's column on the board. |
+| 🟥 **Cancelled** | A pinned shift turns red when the worker cancels. Pull it off the board and drop it in the Shredder. A yellow open shift appears on the tray. |
+| 🟨 **Open shift** | Take it to the Staff Room and offer it to someone whose bubble shows that day. Once they accept, pin it. No stamp needed. |
+| 🐦 **Shift Snatcher** | A bin chicken sneaks to the board, steals a card and runs for the exit. Dash into it to make it drop the card, then pin it again. If it escapes, the shift becomes an open shift. |
 
-The round gets harder in three stages: **Calm** (no sick calls), **Busy** from a fifth of the way in (sick calls and the bin chicken) and **Chaos** for the last third (both come more often). In a three-minute round that's 0:36 and 2:00. The music speeds up with each stage and again in the last 10 seconds.
+The board only takes an approved card, in an empty slot on the card's day. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). The background music speeds up with each stage and again in the last 10 seconds. Fill all 14 slots with no red cards to win. The time left is your score. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever pinned, stamped, passed, shredded and rescued the most.
 
-Cover every shift before the clock runs out to win. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever signed on, passed and rostered the most.
+| | Move | Action (hold to stamp) | Dash |
+| --- | --- | --- | --- |
+| Duck (Player 1) | WASD | Space | Left Shift |
+| Bunny (Player 2) | Arrow keys | Enter | Right Shift or `/` |
+| Cat and frog (Players 3–4), or any phone | Thumb stick | Action button | Dash button |
 
-| | Move | Action |
-| --- | --- | --- |
-| Duck (Player 1) | WASD | Space |
-| Bunny (Player 2) | Arrow keys | Enter |
-| Cat and frog (Players 3 and 4) | Phone thumb stick | Phone action button |
-| Phone browser | Thumb stick | Action button |
+Playing alone? Press **Q**, or the swap button on a touch screen, to switch critters.
 
-Playing alone? Press **Q**, or the swap button on a phone, to switch between the duck and the bunny.
+**Testing.** `node scripts/simulate.ts` plays rounds with bots and prints win rates. After `npm run build`, `node scripts/smoke.mjs` plays the build in headless Edge and saves screenshots to `smoke-out/`. Add `?debug` to the address to get `shiftHappens.round()` in the browser console.
 
 ## Quick play or Roster my team
 
-**Quick play** drops you into a three-minute week at a sample café.
+**Quick play** drops you into a two-minute week at a sample café.
 
 **Roster my team** is for a real business, and takes four steps:
 
@@ -39,7 +38,7 @@ Playing alone? Press **Q**, or the swap button on a phone, to switch between the
 3. **Team.** Add each person with their role, the days they can work and how many shifts they want.
 4. **Week.** Click how many of each role every shift needs, up to four people a shift.
 
-It warns about places nobody can work and roles without enough shifts between them, and saves the team on that device. Bigger weeks get a longer round. Play it, then copy the finished roster from the end screen.
+It warns about places nobody can work and roles without enough shifts between them, and saves the team on that device. In the game your team sends the requests and covers open shifts. For now each needed shift is one card on the board, so shifts that need several people are simplified to one. Play it, then copy the finished roster from the end screen.
 
 ## Phones as controllers (Jackbox-style)
 
@@ -48,10 +47,10 @@ Like a Jackbox party game, the laptop or projector shows the game and phones bec
 1. Open the game on the laptop and select the **Phones** tile on the menu.
 2. A QR code and a four-letter room code appear. Scan the QR code with a phone camera, or select **Copy join link** to send the link instead.
 3. Phones become the duck, the bunny, the cat and the frog, in the order they join. The menu ticks off each one as it connects. The cat and the frog walk into the office as soon as a third or fourth phone joins, even mid-round.
-4. Select **Start round** on a phone, or start from the laptop. A 3-2-1-Go countdown plays on the big screen and every phone, so everyone starts together. Each phone shows a thumb stick, an action button, what its critter is holding and what the action button will do next.
-5. Phones flash, and buzz on Android, when their critter signs someone on or rosters a shift, and when a sick call comes in. When the round ends, each phone shows that player's awards and tallies, with a **Play again** button.
+4. Select **Start round** on a phone, or start from the laptop. A 3-2-1-Go countdown plays on the big screen and every phone, so everyone starts together. Each phone shows a thumb stick, an action button, a dash button, what its critter is holding and what the action button will do next.
+5. Phones flash, and buzz on Android, when their critter stamps or pins a card, and when a shift is cancelled or the Snatcher appears. When the round ends, each phone shows that player's awards and tallies, with a **Play again** button.
 
-A fifth phone waits and takes over a critter as soon as a phone leaves. If a phone leaves mid-round, its critter puts down whoever it was carrying so nobody gets stuck. The keyboard keeps driving the duck and the bunny, so keyboard and phone players can mix.
+A fifth phone waits and takes over a critter as soon as a phone leaves. If a phone leaves mid-round, its critter puts down the card it was carrying so nobody gets stuck. The keyboard keeps driving the duck and the bunny, so keyboard and phone players can mix.
 
 **How it works.** There is no game server. The QR code opens the same GitHub Pages site with the room in the address (`#join-ABCD`). The laptop and phones find each other through public Nostr relays using [Trystero](https://github.com/dmotz/trystero), then talk directly over WebRTC. The laptop runs the whole game. Phones send their stick and button about 20 times a second, and the laptop sends each phone its critter's status 5 times a second. The game contacts the relays only after someone selects the **Phones** tile.
 
@@ -70,10 +69,7 @@ npm run build      # static site in dist/
 npm run preview    # serve the build locally
 npm run typecheck
 npm run lint
-npm run simulate   # bots play 100 rounds without a browser and report the win rate
 ```
-
-`npm run simulate -- 1 show` plays one round and prints its events and final board. Add `--pause=1` (default 2.5) to change how long the bots hesitate after each action. Use it to check that changes to `settings` in `src/round.ts` still leave a winnable game. In PowerShell, run `node --experimental-strip-types scripts/simulate.ts 200 --pause=1` directly, because PowerShell drops the `--` that passes options through npm.
 
 The office lowers its detail automatically on slower devices. Add `?quality=high` or `?quality=low` to the address to fix the detail level.
 
@@ -83,15 +79,14 @@ React and Vite for the page, Three.js for the 3D office, [Fredoka](https://fonts
 
 | File | What it does |
 | --- | --- |
-| `src/round.ts` | All the rules: roles, the starting teams, the week's places, signing on, rostering, sick calls, the bin chicken, collisions, and the timings in `settings` |
-| `src/office-world.ts` | The Three.js office, critters, staff, board and effects |
+| `src/round.ts` | All the rules: the starting teams, request cards, stamping, pinning, cancellations, open shifts, the Staff Room, the Shift Snatcher, collisions, and every tuning number in `settings` |
+| `src/office-world.ts` | The Three.js office, critters, cards, staff, the Snatcher, board and effects |
 | `src/shift-happens.tsx` | The game screen: input, HUD, menu, how to play, results, and the phone lobby |
 | `src/team-setup.tsx` | The **Roster my team** steps: business, roles and shifts, team, week. Saved in the browser |
 | `src/phone-link.ts` | Room codes, join links and the peer-to-peer link for phones |
 | `src/phone-controller.tsx` | The gamepad a phone shows after scanning the QR code |
 | `src/play-qr.tsx` | QR codes |
-| `src/sound.ts` | Sound effects and the music loop, synthesised in the browser |
-| `scripts/simulate.ts` | Bots that play rounds in Node to test and tune the rules |
+| `src/sound.ts` | Sound effects, synthesised in the browser |
 
 ## Publishing
 

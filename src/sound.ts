@@ -1,14 +1,15 @@
-export type Cue =
-  | "spawn" | "pick" | "put" | "approve" | "pin" | "rush" | "chaos" | "win" | "lose" | "swap" | "sick" | "nope" | "tick"
-  | "squawk" | "rescue" | "escape";
+import type { FxKind } from "./round";
+
+/** One sound per rules fx kind, plus UI-only cues: "swap" for switching critters and "tick" for the last ten seconds. */
+export type Cue = FxKind | "swap" | "tick";
+
+const storageKey = "shift-happens-muted";
 
 // The background loop: C, A minor, F, G, one bar each, in eighth notes
 const chords = [[262, 330, 392], [220, 262, 330], [175, 220, 262], [196, 247, 294]];
 const bassLine = [131, 110, 87, 98];
 const arpeggio = [0, 1, 2, 1, 2, 1, 0, 1];
 const melody = [[784, 0, 659, 0, 784, 880, 784, 0], [659, 0, 523, 0, 659, 0, 0, 0], [698, 0, 659, 0, 587, 0, 523, 0], [587, 0, 494, 0, 587, 659, 587, 0]];
-
-const storageKey = "shift-happens-muted";
 
 // Small synthesised sound effects, so the game needs no audio files.
 export function createSound() {
@@ -97,44 +98,56 @@ export function createSound() {
     source.start();
   }
 
+  const stamp = () => {
+    thud(0.9);
+    note(196, 0, 0.18, "square", 0.05, 110);
+    note(784, 0.08, 0.16, "sine", 0.08);
+  };
+  const alarm = () => [0, .16, .5, .66].forEach(at => note(1180, at, 0.12, "square", 0.04));
+  const fanfare = (rise: number) => {
+    note(330 * rise, 0, 0.14, "sawtooth", 0.05, 660 * rise);
+    note(660 * rise, 0.13, 0.18, "sawtooth", 0.05, 990 * rise);
+  };
+
   const cues: Record<Cue, () => void> = {
     spawn: () => note(880, 0, 0.09, "sine", 0.05, 1320),
+    open: () => {
+      note(700, 0, 0.09, "sine", 0.06, 1050);
+      note(1050, 0.08, 0.1, "sine", 0.05);
+    },
     pick: () => note(520, 0, 0.1, "triangle", 0.12, 860),
     put: () => note(420, 0, 0.1, "triangle", 0.1, 260),
-    approve: () => {
-      thud(0.9);
-      note(196, 0, 0.18, "square", 0.05, 110);
-      note(784, 0.08, 0.16, "sine", 0.08);
+    stamp,
+    accept: () => {
+      note(660, 0, 0.1, "sine", 0.09);
+      note(990, 0.08, 0.16, "sine", 0.09);
     },
     pin: () => {
       note(988, 0, 0.12, "sine", 0.11);
       note(1319, 0.07, 0.2, "sine", 0.1);
     },
-    rush: () => {
-      note(330, 0, 0.14, "sawtooth", 0.05, 660);
-      note(660, 0.13, 0.18, "sawtooth", 0.05, 990);
-    },
-    chaos: () => [0, 0.12, 0.24].forEach((at, i) => note(440 + i * 220, at, 0.16, "sawtooth", 0.05, 660 + i * 330)),
-    // A short, low "uh-uh" when something can't be done
     nope: () => {
-      note(260, 0, 0.08, "square", 0.045, 220);
-      note(190, 0.1, 0.12, "square", 0.045, 150);
+      note(220, 0, 0.09, "square", 0.06, 180);
+      note(180, 0.1, 0.14, "square", 0.06, 140);
     },
-    tick: () => note(1250, 0, 0.04, "square", 0.03),
-    // The bin chicken: two scratchy honks
-    squawk: () => {
-      thud(0.3);
-      note(820, 0, 0.13, "sawtooth", 0.06, 460);
-      note(900, 0.17, 0.16, "sawtooth", 0.06, 420);
+    cancel: alarm,
+    shred: () => {
+      thud(0.6);
+      note(140, 0, 0.3, "sawtooth", 0.04, 90);
     },
-    rescue: () => [660, 880, 1175].forEach((tone, i) => note(tone, i * 0.07, 0.14, "triangle", 0.1)),
-    escape: () => {
-      note(700, 0, 0.12, "sawtooth", 0.05, 900);
-      note(520, 0.14, 0.3, "triangle", 0.08, 260);
+    snatch: () => [0, .09, .18].forEach(at => note(1400, at, 0.07, "square", 0.05, 900)),
+    knock: () => {
+      thud(1);
+      note(300, 0, 0.12, "triangle", 0.1, 120);
     },
+    rescue: () => [660, 880, 1100].forEach((tone, i) => note(tone, i * 0.07, 0.14, "triangle", 0.09)),
+    escape: () => note(500, 0, 0.4, "sawtooth", 0.05, 120),
+    dash: () => note(300, 0, 0.12, "sine", 0.06, 700),
+    busy: () => fanfare(1),
+    chaos: () => fanfare(1.5),
     win: () => [523, 659, 784, 1047].forEach((tone, i) => note(tone, i * 0.11, 0.32, "triangle", 0.12)),
     lose: () => [392, 330, 262].forEach((tone, i) => note(tone, i * 0.18, 0.34, "triangle", 0.1)),
-    sick: () => [0, .16, .5, .66].forEach(at => note(1180, at, 0.12, "square", 0.04)),
+    tick: () => note(1000, 0, 0.05, "square", 0.04),
     swap: () => {
       note(620, 0, 0.07, "sine", 0.08, 930);
       note(930, 0.06, 0.08, "sine", 0.06, 1240);

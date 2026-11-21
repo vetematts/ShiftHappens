@@ -7,7 +7,7 @@ import {
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
 import PhoneController from "./phone-controller";
-import { cardColours, cardText, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
+import { cardColours, cardText, critters, joinsOverLan, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
 import { PlayQr, playUrl, QrCode } from "./play-qr";
 import { createSound, type Sound } from "./sound";
 
@@ -565,6 +565,7 @@ function Game() {
             time: latest.time, filled: latest.filled, needed: latest.needed, news: latest.news,
             countdown, stats: latest.stats[i],
             awards: awarded.filter(award => award.winners.includes(i)).map(award => award.title),
+            joined: seats.current.map(Boolean),
           }, peer);
         });
       }
@@ -764,6 +765,10 @@ function Game() {
           ))}
         </ul>
         {phones.failed && <p className="phones-error">Couldn’t open the room. Check the internet connection.</p>}
+        {joinsOverLan() && <p className="join-hint">Testing locally: phones must be on the same Wi-Fi as this computer.</p>}
+        {joined > 0 && (
+          <p className="join-hint">When everyone’s in, the {critters[phones.seats.findIndex(Boolean)].emoji} phone taps <b>Start</b>, or start here.</p>
+        )}
         <BigButton tone="primary" icon="▶" title="Start round"
           note={joined ? `${joined} phone${joined === 1 ? "" : "s"} in · keyboard players welcome too` : "Waiting for phones · keyboards work too"}
           onClick={() => start("quick")} />

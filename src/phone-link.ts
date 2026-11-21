@@ -45,6 +45,8 @@ export type HostMessage =
     stats?: Stats;
     /** Award titles this critter won, once the round has ended. */
     awards?: string[];
+    /** Which critters (by seat) have a phone in the room, for the lobby. The lowest one starts the round, like a Jackbox VIP. */
+    joined?: boolean[];
   };
 
 /** The helper critters, by seat. */
@@ -93,8 +95,23 @@ export function joinUrl(code: string, local: boolean) {
   // Phones use the same relay as the laptop. The default needs nothing in the link, which keeps the QR code simple.
   const relay = new URLSearchParams(location.search).get("relay");
   const query = relay && !local && bareHost(relay) !== bareHost(defaultRelay) ? `?relay=${encodeURIComponent(relay)}` : "";
-  return `${location.origin}${location.pathname}${query}#join-${code}${local ? "-local" : ""}`;
+  return `${phoneOrigin(local)}${location.pathname}${query}#join-${code}${local ? "-local" : ""}`;
 }
+
+/**
+ * Where phones should load the game from. Usually this page's own address, but a phone can't open "localhost", so
+ * while testing with `npm run dev` the link uses this computer's Wi-Fi address instead (phones must be on the same
+ * Wi-Fi). Same-browser test links stay on localhost.
+ */
+function phoneOrigin(local: boolean) {
+  // Only the dev server adds this tag (see vite.config.ts); builds never have it
+  const lan = document.querySelector<HTMLMetaElement>('meta[name="dev-lan-origin"]')?.content;
+  const onThisComputer = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  return lan && onThisComputer && !local ? lan : location.origin;
+}
+
+/** Whether phones need to be on this computer's Wi-Fi to join (only when testing with `npm run dev` on localhost). */
+export const joinsOverLan = () => phoneOrigin(false) !== location.origin;
 
 /**
  * The relay server to talk through, if any: `?relay=` in the address, else VITE_RELAY_URL from the build, else the

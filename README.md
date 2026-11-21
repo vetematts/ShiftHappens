@@ -50,8 +50,8 @@ Like a Jackbox party game, the laptop or projector shows the game and phones bec
 
 1. Open the game on the laptop and select the **Phones** tile on the menu.
 2. A QR code and a four-letter room code appear. Scan the QR code with a phone camera, or select **Copy join link** to send the link instead.
-3. Phones become the duck, the bunny, the cat and the frog, in the order they join. The menu ticks off each one as it connects. The cat and the frog walk into the office as soon as a third or fourth phone joins, even mid-round.
-4. Select **Start round** on a phone, or start from the laptop. A 3-2-1-Go countdown plays on the big screen and every phone, so everyone starts together. Each phone shows a thumb stick, an action button, a dash button, what its critter is holding and what the action button will do next.
+3. Phones become the duck, the bunny, the cat and the frog, in the order they join. The menu ticks off each one as it connects, and each phone shows a lobby with its critter and who else is in. The cat and the frog walk into the office as soon as a third or fourth phone joins, even mid-round.
+4. Like a Jackbox VIP, the first phone in gets **Everybody's in. Start!** while the others wait for it. Tap it when everyone has joined, or start from the laptop. A 3-2-1-Go countdown plays on the big screen and every phone, so everyone starts together. Each phone shows a thumb stick, an action button, a dash button, what its critter is holding and what the action button will do next.
 5. Phones flash, and buzz on Android, when their critter stamps or pins a card or slips over, and when a shift is cancelled or the Snatcher appears. When the round ends, each phone shows that player's awards and tallies, with a **Play again** button.
 
 A fifth phone waits and takes over a critter as soon as a phone leaves. If a phone leaves mid-round, its critter puts down the card it was carrying so nobody gets stuck. The keyboard keeps driving the duck and the bunny, so keyboard and phone players can mix.
@@ -75,6 +75,8 @@ The game uses the team's relay (`shifthappens-c5ij.onrender.com`, set in `src/ph
 The game pings the relay as soon as the page opens, to start waking it. On demo day, still open the relay's address about five minutes early: a free Render service sleeps after 15 idle minutes and takes about a minute to wake. Leave the game open on the laptop and it stays awake.
 
 To try the relay on one computer: `cd server && npm install && npm start`, then add `?relay=ws://localhost:8787` to the game's address.
+
+**Testing with real phones locally.** `npm run dev` also listens on your network, and on `localhost` the QR code points phones at this computer's Wi-Fi address (the `Network:` line Vite prints) instead of `localhost`, which a phone can't open. The phones must be on the same Wi-Fi as the computer.
 
 **Testing without phones.** Add `?link=local` to the laptop's address and select the **Phones** tile. Then open `index.html#join-CODE-local` in other tabs of the same browser, with the room code in place of `CODE`. The tabs talk through the browser instead of the network.
 

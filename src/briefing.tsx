@@ -15,11 +15,15 @@ function Card({ kind = "request", day = "Mon", stamped = false }: { kind?: keyof
   );
 }
 
-/** The week on the board, filling up one pinned card at a time. */
-function Board() {
+/** The week on the board, filling up one pinned card at a time. Slots this week doesn't need stay greyed out. */
+function Board({ open }: { open: boolean[] }) {
+  const count = open.filter(Boolean).length;
+  let next = 0;
   return (
     <span className="brief-board" aria-hidden="true">
-      {Array.from({ length: 14 }, (_, i) => <span key={i} style={{ "--n": (i * 5) % 14 } as CSSProperties} />)}
+      {open.map((needed, i) => needed
+        ? <span key={i} style={{ "--n": (next++ * 3) % Math.max(1, count) } as CSSProperties} />
+        : <span key={i} data-closed="true" />)}
     </span>
   );
 }
@@ -28,7 +32,9 @@ function Board() {
  * The opening frame before a round: the goal in a few big words and pictures, readable from across the room.
  * It shows once everyone has joined and the host starts, then counts down into the 3-2-1.
  */
-export function Briefing({ left, seats, ready, onGo }: {
+export function Briefing({ open, left, seats, ready, onGo }: {
+  /** Which of the week's 14 slots this round needs filled (the rest are closed). */
+  open: boolean[];
   /** Whole seconds until it moves on by itself. */
   left: number;
   /** Which critters have a phone in them, if phones are on. */
@@ -38,6 +44,7 @@ export function Briefing({ left, seats, ready, onGo }: {
   onGo: () => void;
 }) {
   const phones = seats?.map((peer, i) => (peer ? i : -1)).filter(i => i >= 0) ?? [];
+  const shiftsToFill = open.filter(Boolean).length;
   return (
     <div className="brief" role="dialog" aria-modal="true" aria-labelledby="brief-title">
       <h1 id="brief-title" className="brief-title">Roster everyone <em>now!!!</em></h1>
@@ -47,10 +54,10 @@ export function Briefing({ left, seats, ready, onGo }: {
         <li className="brief-arrow" aria-hidden="true">➜</li>
         <li><span className="brief-pic brief-pic--stamp"><Card stamped /><span className="brief-stamp" aria-hidden="true" /></span><b>Stamp</b></li>
         <li className="brief-arrow" aria-hidden="true">➜</li>
-        <li><span className="brief-pic"><Board /></span><b>Pin</b></li>
+        <li><span className="brief-pic"><Board open={open} /></span><b>Pin</b></li>
       </ol>
 
-      <p className="brief-goal"><span aria-hidden="true">⏱️</span> Fill all <b>14</b> shifts in <b>2 minutes!</b></p>
+      <p className="brief-goal"><span aria-hidden="true">⏱️</span> Fill all <b>{shiftsToFill}</b> shifts in <b>2 minutes!</b></p>
 
       <ul className="brief-watch" aria-label="Watch out for">
         <li><span aria-hidden="true">🐔</span><b>Dash it!</b></li>

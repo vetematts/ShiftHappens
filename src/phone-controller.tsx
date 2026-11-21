@@ -4,6 +4,8 @@ import { openLink, type HostMessage, type Link } from "./phone-link";
 const critters = [
   { name: "duck", emoji: "🐥", colour: "#ffd54f" },
   { name: "bunny", emoji: "🐰", colour: "#cdb8ff" },
+  { name: "cat", emoji: "🐱", colour: "#9fd0ff" },
+  { name: "frog", emoji: "🐸", colour: "#9be58a" },
 ];
 const stickReach = 56;
 
@@ -131,8 +133,8 @@ export default function PhoneController({ code, local }: { code: string; local: 
         </section>
       ) : seat < 0 ? (
         <section className="gp-wait">
-          <h1>Both critters are taken</h1>
-          <p>Two phones are already playing. Keep this open and you’ll jump in as soon as one leaves.</p>
+          <h1>All four critters are taken</h1>
+          <p>Four phones are already playing. Keep this open and you’ll jump in as soon as one leaves.</p>
         </section>
       ) : (
         <>

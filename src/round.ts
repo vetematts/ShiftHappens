@@ -245,6 +245,9 @@ export type Staff = Person & {
   at: StaffLocation;
 };
 
+/** What each critter did this round, for the awards on the end screen. */
+export type PlayerStats = { rostered: number; signed: number; passed: number };
+
 export type Player = {
   position: Point;
   carrying?: Staff;
@@ -253,7 +256,20 @@ export type Player = {
   moving: boolean;
   message: string;
   messageUntil: number;
+  stats: PlayerStats;
 };
+
+/** A round has one critter per player: at least two so the keyboard always works, and up to four with phones. */
+export const minPlayers = 2;
+export const maxPlayers = 4;
+
+/** Where each critter starts: players 1 and 3 on the inbox side of the counter, players 2 and 4 on the board side. */
+const starts = [
+  { x: -5.3, z: 2.05, facing: 0 },
+  { x: -.5, z: -1.3, facing: Math.PI },
+  { x: 2.6, z: 2.05, facing: 0 },
+  { x: 3.6, z: -1.3, facing: Math.PI },
+];
 
 export type Round = {
   phase: "ready" | "playing" | "won" | "lost";
@@ -276,8 +292,9 @@ export type Round = {
   custom: boolean;
 };
 
-export function newRound(team: Team = sampleTeam, custom = false): Round {
+export function newRound(team: Team = sampleTeam, custom = false, playerCount = minPlayers): Round {
   const slots = slotsOf(team);
+  const count = Math.max(minPlayers, Math.min(maxPlayers, Math.floor(playerCount) || minPlayers));
   return {
     phase: "ready",
     elapsed: 0,
@@ -296,11 +313,30 @@ export function newRound(team: Team = sampleTeam, custom = false): Round {
     board: slots.map(() => undefined),
     news: { text: "", until: 0 },
     custom,
-    players: [
-      { position: { x: -5.3, z: 2.05 }, facing: 0, moving: false, stamping: false, message: "", messageUntil: 0 },
-      { position: { x: -.5, z: -1.3 }, facing: Math.PI, moving: false, stamping: false, message: "", messageUntil: 0 },
-    ],
+    players: starts.slice(0, count).map((_, i) => makePlayer(i)),
   };
+}
+
+function makePlayer(index: number): Player {
+  const { x, z, facing } = starts[index];
+  return {
+    position: { x, z }, facing, moving: false, stamping: false, message: "", messageUntil: 0,
+    stats: { rostered: 0, signed: 0, passed: 0 },
+  };
+}
+
+/** Adds critters until the round has `count` players (up to four), so a phone can drop in at any time. */
+export function ensurePlayers(round: Round, count: number) {
+  while (round.players.length < Math.min(count, maxPlayers)) round.players.push(makePlayer(round.players.length));
+}
+
+/** Puts down whoever this critter is carrying, where it stands. Used when a phone player leaves mid-round. */
+export function dropCarried(round: Round, index: number) {
+  const player = round.players[index];
+  if (!player?.carrying) return;
+  stopStamp(player);
+  player.carrying.at = { place: "floor", point: { ...player.position } };
+  player.carrying = undefined;
 }
 
 /** Who is in each slot, or undefined while it is open. */
@@ -427,6 +463,7 @@ export function stepRound(round: Round, seconds: number) {
     if (person.stamp >= settings.stampTime) {
       person.approved = true;
       player.stamping = false;
+      player.stats.signed++;
     }
   }
 }
@@ -556,6 +593,7 @@ export function interact(round: Round, index: number) {
     }
     round.board[slot] = carrying.id;
     carrying.worked++;
+    player.stats.rostered++;
     // They head home and come back later if they still have hours and there's work they can do.
     carrying.at = { place: carrying.worked >= carrying.shifts ? "done" : "away" };
     player.carrying = undefined;
@@ -577,6 +615,7 @@ export function interact(round: Round, index: number) {
   carrying.at = pad === undefined
     ? { place: "floor", point: { ...position } }
     : { place: "counter", pad };
+  if (pad !== undefined) player.stats.passed++;
   stopStamp(player);
   player.carrying = undefined;
 }

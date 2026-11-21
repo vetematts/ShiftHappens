@@ -1,9 +1,9 @@
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import { createOfficeWorld } from "./office-world";
 import {
-  beginRound, dayRange, days, filledShifts, interact, neededShifts, newRound, nextAction, roleIn, roster, sampleTeam,
-  settings, stepRound, stopStamp, templates, walk,
-  type Round, type Team,
+  beginRound, dayRange, days, dropCarried, ensurePlayers, filledShifts, interact, maxPlayers, minPlayers, neededShifts,
+  newRound, nextAction, roleIn, roster, sampleTeam, settings, stepRound, stopStamp, templates, walk,
+  type PlayerStats, type Round, type Team,
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
 import PhoneController from "./phone-controller";
@@ -17,8 +17,32 @@ const keyboards = [
 ];
 const swapKey = "KeyQ";
 const gameKeys = [...keyboards.flatMap(({ up, left, down, right, use }) => [up, left, down, right, use]), swapKey];
-const critters = [{ name: "duck", emoji: "🐥" }, { name: "bunny", emoji: "🐰" }];
+/** Players 1 to 4. Keyboards drive the duck and the bunny; phones can drive all four. */
+const critters = [
+  { name: "duck", label: "Duck", emoji: "🐥" },
+  { name: "bunny", label: "Bunny", emoji: "🐰" },
+  { name: "cat", label: "Cat", emoji: "🐱" },
+  { name: "frog", label: "Frog", emoji: "🐸" },
+];
 const stickReach = 46;
+const emptySeats = () => Array.from({ length: maxPlayers }, () => null as string | null);
+const stillInputs = () => Array.from({ length: maxPlayers }, () => ({ x: 0, y: 0, act: false }));
+
+/** Fun titles for the results, each going to whoever did the most of one job. Ties share the award. */
+const awardList = [
+  { stat: "rostered", title: "Roster Royalty", unit: ["shift rostered", "shifts rostered"] },
+  { stat: "signed", title: "Stamp Addict", unit: ["sign-on", "sign-ons"] },
+  { stat: "passed", title: "Pass Master", unit: ["pass over the counter", "passes over the counter"] },
+] as const;
+
+function partyAwards(players: { stats: PlayerStats }[]) {
+  return awardList.flatMap(award => {
+    const best = Math.max(0, ...players.map(player => player.stats[award.stat]));
+    if (!best) return [];
+    const winners = players.flatMap((player, i) => (player.stats[award.stat] === best ? [i] : []));
+    return [{ ...award, best, winners }];
+  });
+}
 
 const tips = [
   "Staff wear caps in their role colour. Match the cap to the shift on the board.",
@@ -27,7 +51,7 @@ const tips = [
   "A sick call empties that person’s whole day. Refill it fast.",
   "Playing alone? Press Q to swap between the duck and the bunny.",
   "Roster my team works for cafés, clinics, salons or anything with shifts.",
-  "Scan the QR code and your phones become the controllers.",
+  "Up to four can play: select Phones and everyone scans the QR code.",
 ];
 
 function clock(seconds: number) {
@@ -56,6 +80,7 @@ function snapshot(round: Round) {
       stamp: player.stamping ? (player.carrying?.stamp ?? 0) / settings.stampTime : 0,
       stamping: player.stamping,
       prompt: player.messageUntil > round.elapsed ? player.message : nextAction(round, i),
+      stats: { ...player.stats },
     })),
   };
 }
@@ -159,19 +184,29 @@ function Game() {
   const [graphics, setGraphics] = useState<"loading" | "ready" | "failed">("loading");
   const [muted, setMuted] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [team, setTeam] = useState<Team>(() => copyTeam(sampleTeam));
   const [setup, setSetup] = useState(false);
   const [help, setHelp] = useState(false);
   const [tip, setTip] = useState(0);
   const lastMode = useRef<"quick" | "real">("quick");
-  // Phones as controllers: seat 0 is the duck, seat 1 the bunny
+  // Phones as controllers: seat 0 is the duck, 1 the bunny, 2 the cat and 3 the frog
   const [phones, setPhones] = useState<Phones | null>(null);
   const phoneLink = useRef<Link | null>(null);
-  const seats = useRef<(string | null)[]>([null, null]);
-  const remote = useRef([{ x: 0, y: 0, act: false }, { x: 0, y: 0, act: false }]);
+  const seats = useRef(emptySeats());
+  const remote = useRef(stillInputs());
 
   function copyRoster() {
     navigator.clipboard?.writeText(rosterText(view)).then(() => setCopied(true), () => setCopied(false));
+  }
+
+  function copyJoinLink(code: string, local: boolean) {
+    navigator.clipboard?.writeText(joinUrl(code, local)).then(() => setLinkCopied(true), () => setLinkCopied(false));
+  }
+
+  /** One critter per seat up to the last phone that joined, and never fewer than the two keyboard players. */
+  function playerCount() {
+    return Math.max(minPlayers, seats.current.reduce((last, peer, i) => (peer ? i + 1 : last), 0));
   }
 
   // A new tip along the bottom every few seconds while the menu is up
@@ -197,6 +232,7 @@ function Game() {
     }
     if (code.startsWith("Phone")) {
       const critter = Number(code.slice(5));
+      if (!round.current.players[critter]) return;
       holding.current.set(code, critter);
       interact(round.current, critter);
       return;
@@ -212,7 +248,8 @@ function Game() {
     if (!keys.current.delete(code)) return;
     const critter = holding.current.get(code);
     holding.current.delete(code);
-    if (critter !== undefined) stopStamp(round.current.players[critter]);
+    const player = critter === undefined ? undefined : round.current.players[critter];
+    if (player) stopStamp(player);
   }
 
   // Keyboard listeners live in an effect, so they reach the latest press and release through effect events.
@@ -226,6 +263,11 @@ function Game() {
       if (seat !== -1) seats.current[seat] = peer;
       setPhones(current => current && { ...current, seats: [...seats.current] });
     }
+    // A third or fourth phone brings its critter into the office straight away, even mid-round
+    if (seat !== -1 && seat >= round.current.players.length) {
+      ensurePlayers(round.current, seat + 1);
+      setView(snapshot(round.current));
+    }
     phoneLink.current?.send({ t: "seat", player: seat }, peer);
     return seat;
   }
@@ -238,6 +280,8 @@ function Game() {
     seats.current[seat] = null;
     remote.current[seat] = { x: 0, y: 0, act: false };
     release(`Phone${seat}`);
+    // Whoever they were carrying is put down, so nobody the team needs gets stuck in a missing player's arms
+    dropCarried(round.current, seat);
     setPhones(current => current && { ...current, seats: [...seats.current] });
   });
   const onPhoneMessage = useEffectEvent((message: Message, peer: string) => {
@@ -276,14 +320,15 @@ function Game() {
       closed = true;
       phoneLink.current?.close();
       phoneLink.current = null;
-      seats.current = [null, null];
-      remote.current = [{ x: 0, y: 0, act: false }, { x: 0, y: 0, act: false }];
+      seats.current = emptySeats();
+      remote.current = stillInputs();
     };
   }, [roomCode, roomLocal]);
 
   function startPhones() {
     sound.current?.unlock();
-    setPhones({ code: makeRoomCode(), local: wantsLocalLink(), seats: [null, null], failed: false });
+    setLinkCopied(false);
+    setPhones({ code: makeRoomCode(), local: wantsLocalLink(), seats: emptySeats(), failed: false });
   }
 
   function swap() {
@@ -333,6 +378,7 @@ function Game() {
         moves[active.current].across += stick.current.x;
         moves[active.current].downward += stick.current.y;
         remote.current.forEach((input, i) => {
+          if (!moves[i]) return;
           moves[i].across += input.x;
           moves[i].downward += input.y;
         });
@@ -348,8 +394,8 @@ function Game() {
         lastBroadcast = now;
         const latest = snapshot(state);
         seats.current.forEach((peer, i) => {
-          if (!peer) return;
           const player = latest.players[i];
+          if (!peer || !player) return;
           phoneLink.current!.send({
             t: "status", phase: state.phase, prompt: player.prompt, carrying: player.carrying, colour: player.colour,
             approved: player.approved, stamping: player.stamping, time: latest.time, filled: latest.filled,
@@ -430,8 +476,8 @@ function Game() {
         roles: team.roles.map((role, i) => ({ ...role, label: role.label.trim() || `Role ${i + 1}` })),
         shiftNames: [team.shiftNames[0].trim() || "AM", team.shiftNames[1].trim() || "PM"],
         people: team.people.filter(person => person.name.trim()).map(person => ({ ...person, name: person.name.trim() })),
-      }, true)
-      : newRound();
+      }, true, playerCount())
+      : newRound(sampleTeam, false, playerCount());
     beginRound(state);
     round.current = state;
     setView(snapshot(state));
@@ -485,6 +531,7 @@ function Game() {
   }
 
   const urgent = view.time <= 20 && view.phase === "playing";
+  const awards = view.phase === "won" || view.phase === "lost" ? partyAwards(view.players) : [];
   const solo = view.players[lead];
   const playing = view.phase === "playing";
   const savedKind = templates.find(template => template.id === team.kind);
@@ -499,15 +546,20 @@ function Game() {
     <div className="phones">
       <QrCode text={joinUrl(phones.code, phones.local)} label={`QR code to join room ${phones.code} with a phone`} />
       <div>
-        <strong>Scan to use your phone as a controller</strong>
-        <p>Room <b className="phones-code">{phones.code}</b>{phones.local ? " · same-browser test" : ""}</p>
+        <strong>Scan to join with your phone</strong>
+        <p>Room <b className="phones-code">{phones.code}</b>{phones.local ? " · same-browser test" : ""} · up to {maxPlayers} players</p>
         <ul>
-          {critters.map(({ name, emoji }, i) => (
-            <li key={name} data-on={Boolean(phones.seats[i])}>{emoji} {name[0].toUpperCase() + name.slice(1)}: {phones.seats[i] ? "phone connected" : "waiting…"}</li>
+          {critters.map(({ name, label, emoji }, i) => (
+            <li key={name} data-on={Boolean(phones.seats[i])}>
+              {emoji} {label}: {phones.seats[i] ? "phone connected" : i < minPlayers ? "keyboard, or waiting for a phone…" : "waiting for a phone…"}
+            </li>
           ))}
         </ul>
         {phones.failed && <p className="phones-error">Couldn’t open the room. Check the internet connection.</p>}
-        <button type="button" className="link" onClick={() => setPhones(null)}>Stop using phones</button>
+        <div className="phones-actions">
+          <button type="button" className="link" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
+          <button type="button" className="link" onClick={() => setPhones(null)}>Stop using phones</button>
+        </div>
       </div>
     </div>
   );
@@ -553,7 +605,7 @@ function Game() {
         {playing && view.news && <p className="toast" role="status" key={view.news}><span aria-hidden="true">📞</span> {view.news}</p>}
 
         {playing && (
-          <div className="pads" aria-label="Player controls">
+          <div className="pads" data-count={view.players.length} aria-label="Player controls">
             {keyboards.map(({ guide, action }, i) => {
               // Player 1's keys follow whichever critter they have swapped to.
               const critter = i === 0 ? lead : 1;
@@ -565,6 +617,24 @@ function Game() {
                   </span>
                   <div>
                     <div className="pad-keys"><kbd>{guide}</kbd> <kbd>{action}</kbd>{i === 0 && <> <kbd>Q</kbd> swap</>}</div>
+                    <p className="pad-prompt">
+                      {player.carrying && <span className="person-chip" style={{ "--role": player.colour } as CSSProperties}>{player.carrying}{player.approved ? " ✓" : ""}</span>}
+                      <span>{player.stamping ? "Stamping…" : player.prompt}</span>
+                    </p>
+                  </div>
+                </section>
+              );
+            })}
+            {/* The cat and the frog only play from phones */}
+            {view.players.slice(keyboards.length).map((player, n) => {
+              const critter = n + keyboards.length;
+              return (
+                <section className="pad-card" data-critter={critter} key={critters[critter].name} aria-label={`Player ${critter + 1}, the ${critters[critter].name} on a phone`}>
+                  <span className="pad-avatar" aria-hidden="true">{critters[critter].emoji}
+                    {player.stamping && <svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="1" style={{ strokeDashoffset: 1 - player.stamp }} /></svg>}
+                  </span>
+                  <div>
+                    <div className="pad-keys">📱 {phones?.seats[critter] ? "On a phone" : "Phone disconnected"}</div>
                     <p className="pad-prompt">
                       {player.carrying && <span className="person-chip" style={{ "--role": player.colour } as CSSProperties}>{player.carrying}{player.approved ? " ✓" : ""}</span>}
                       <span>{player.stamping ? "Stamping…" : player.prompt}</span>
@@ -630,6 +700,7 @@ function Game() {
                 <div className="how-keys">
                   <span>🐥 <kbd>WASD</kbd> + <kbd>Space</kbd></span>
                   <span>🐰 <kbd>↑ ← ↓ →</kbd> + <kbd>Enter</kbd></span>
+                  <span>🐱 🐸 on phones</span>
                   <span>Solo? <kbd>Q</kbd> swaps critters</span>
                 </div>
                 <p className="how-note">Caps show each person’s role. Name tags show their days and shifts left. Sick calls knock people off the board, so watch the phone.</p>
@@ -642,13 +713,13 @@ function Game() {
               <div className="panel panel-menu">
                 <div className="logo"><span className="brand-tag">Shift</span><span className="brand-word">Happens!</span></div>
                 <p className="tagline">Overcooked, but for rostering. Play the chaos, get a real roster.</p>
-                <BigButton tone="primary" icon="▶" title="Quick play" note="Sample café · 3 minutes · 1–2 players" onClick={() => start("quick")} />
+                <BigButton tone="primary" icon="▶" title="Quick play" note="Sample café · 3 minutes · 1–4 players" onClick={() => start("quick")} />
                 <BigButton tone="roster" icon="📋" title="Roster my team"
                   note={custom && savedKind ? `Continue your ${savedKind.label.toLowerCase()} week · ${team.people.length} people` : "Your staff and shifts in, a real roster out"}
                   onClick={() => setSetup(true)} />
                 <div className="tiles">
                   <button type="button" className="tile" data-on={Boolean(phones)} onClick={() => (phones ? setPhones(null) : startPhones())}>
-                    <span className="tile-icon tile-icon--phones" aria-hidden="true">📱</span><b>Phones</b><small>{phones ? "Turn off" : "as controllers"}</small>
+                    <span className="tile-icon tile-icon--phones" aria-hidden="true">📱</span><b>Phones</b><small>{phones ? "Turn off" : "2–4 players"}</small>
                   </button>
                   <button type="button" className="tile" onClick={() => setHelp(true)}>
                     <span className="tile-icon tile-icon--help" aria-hidden="true">💡</span><b>How to play</b><small>30-second guide</small>
@@ -674,10 +745,21 @@ function Game() {
                   <span><b>{Math.round(progress * 100)}%</b><small>covered</small></span>
                 </div>
                 <RosterTable view={view} />
+                {awards.length > 0 && (
+                  <ul className="awards" aria-label="Awards">
+                    {awards.map(award => (
+                      <li key={award.stat}>
+                        <span aria-hidden="true">{award.winners.map(i => critters[i].emoji).join("")}</span>
+                        <b>{award.title}</b>
+                        <small>{award.winners.map(i => critters[i].label).join(" & ")} · {award.best} {award.unit[award.best === 1 ? 0 : 1]}</small>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="actions">
                   <button type="button" className="btn btn-soft" onClick={copyRoster}>{copied ? "Copied ✓" : "Copy roster"}</button>
                   {view.custom && <button type="button" className="btn btn-soft" onClick={() => setSetup(true)}>Edit team</button>}
-                  <button type="button" className="btn btn-ghost" onClick={() => { round.current = newRound(); setView(snapshot(round.current)); }}>Menu</button>
+                  <button type="button" className="btn btn-ghost" onClick={() => { round.current = newRound(sampleTeam, false, playerCount()); setView(snapshot(round.current)); }}>Menu</button>
                   <button type="button" className="btn btn-primary" onClick={() => start()}>Play again</button>
                 </div>
                 {phonePanel}

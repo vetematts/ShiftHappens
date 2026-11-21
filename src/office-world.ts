@@ -19,7 +19,11 @@ const colours = {
 const playerColours = [
   { body: 0xffd54f, belly: 0xfff1b8, accent: 0xff8f3a, ring: 0xffaa00, tag: "#ffcf5c" },
   { body: 0xcdb8ff, belly: 0xf3ecff, accent: 0xff9cc4, ring: 0x9b6bff, tag: "#c9b1ff" },
+  { body: 0x9cc8f0, belly: 0xeaf4ff, accent: 0xff9cb0, ring: 0x3d8bdb, tag: "#9fd0ff" },
+  { body: 0x8fdc7a, belly: 0xeafbd9, accent: 0x4f9e48, ring: 0x2fa84f, tag: "#9be58a" },
 ];
+/** Player 1 to 4, in seat order. */
+const critterKinds = ["duck", "bunny", "cat", "frog"] as const;
 const boardY = 1.72;
 const boardZ = -5.36;
 const boardWidth = 15.4;
@@ -28,7 +32,7 @@ const boardHeight = 1.95;
 const font = (weight: number, size: number) =>
   `${Math.min(700, weight)} ${size}px "Fredoka Variable", ui-rounded, "SF Pro Rounded", Nunito, system-ui, sans-serif`;
 
-type Kind = "duck" | "bunny";
+type Kind = typeof critterKinds[number];
 type Critter = ReturnType<typeof makeCritter>;
 type Particle = { life: number; max: number; x: number; y: number; z: number; vx: number; vy: number; vz: number; size: number; spin: number; gravity: number };
 
@@ -77,6 +81,41 @@ function makeCritter(kind: Kind, look: typeof playerColours[number], parts: Part
     const tie = parts.rbox(body, 0xe8603c, 0, .66, .37, .1, .1, .05, .03);
     tie.rotation.z = Math.PI / 4;
     parts.rbox(body, 0xe8603c, 0, .52, .38, .09, .2, .04, .03);
+  } else if (kind === "cat") {
+    // Round ears tipped out, a pink nose, whiskers, a tail and a bell collar
+    ball(head, look.accent, 0, -.03, .35, .045, .035, .03);
+    for (const side of [-1, 1]) {
+      const ear = new T.Group();
+      ear.position.set(side * .2, .27, -.02);
+      ear.userData.tilt = -side * .38;
+      ear.rotation.z = ear.userData.tilt;
+      head.add(ear);
+      ball(ear, look.body, 0, .07, 0, .11, .15, .07);
+      ball(ear, look.accent, 0, .07, .04, .06, .09, .03);
+      ears.push(ear);
+      for (const tilt of [-.12, .12]) {
+        const whisker = capsule(head, colours.white, side * .3, -.06 + tilt * .2, .24, .008, .09, .008);
+        whisker.rotation.z = side * (Math.PI / 2 + tilt);
+      }
+    }
+    const tail = capsule(body, look.body, 0, .48, -.42, .07, .2, .07);
+    tail.rotation.x = -.9;
+    parts.cylinder(body, look.accent, 0, .83, 0, .3, .05);
+    ball(body, 0xffd35c, 0, .76, .3, .05);
+  } else if (kind === "frog") {
+    // Eyes on top of the head, a wide smile and a bow tie
+    eyes.forEach((eye, n) => {
+      const side = n ? 1 : -1;
+      eye.position.set(side * .17, .28, .2);
+      ball(head, look.body, side * .17, .25, .08, .15, .14, .12);
+    });
+    const smile = capsule(head, look.accent, 0, -.1, .33, .016, .07, .016);
+    smile.rotation.z = Math.PI / 2;
+    for (const side of [-1, 1]) {
+      const bow = ball(body, 0xff6f8e, side * .07, .8, .36, .07, .05, .04);
+      bow.rotation.z = side * .3;
+    }
+    ball(body, 0xff6f8e, 0, .8, .38, .03);
   } else {
     ball(head, colours.blush, 0, -.02, .345, .045, .032, .03);
     for (const side of [-1, 1]) {
@@ -848,7 +887,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   }
 
   // Players
-  const critters: Critter[] = [makeCritter("duck", playerColours[0], parts), makeCritter("bunny", playerColours[1], parts)];
+  const critters: Critter[] = critterKinds.map((kind, i) => makeCritter(kind, playerColours[i], parts));
   critters.forEach(critter => {
     critter.root.scale.setScalar(1.35);
     scene.add(critter.root);
@@ -1341,6 +1380,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     critters.forEach((critter, i) => {
       const player = round.players[i];
       const { root, body, head, eyes, ears, arms, feet } = critter;
+      // Only as many critters as there are players this round
+      root.visible = Boolean(player);
+      if (!player) {
+        tags[i].visible = false;
+        progress[i].group.visible = false;
+        return;
+      }
       root.position.set(player.position.x, 0, player.position.z);
       let turnBy = player.facing - critter.facing;
       turnBy = Math.atan2(Math.sin(turnBy), Math.cos(turnBy));
@@ -1376,7 +1422,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       });
       ears.forEach((ear, side) => {
         ear.rotation.x = -bob * 1.4 - squashBy * 1.5;
-        ear.rotation.z = (side ? -.16 : .16) + (moving ? Math.sin(step * .5) * .08 : 0);
+        ear.rotation.z = (ear.userData.tilt ?? (side ? -.16 : .16)) + (moving ? Math.sin(step * .5) * .08 : 0);
       });
       if (now > critter.blinkAt + .13) critter.blinkAt = now + 2 + Math.random() * 3;
       const blinking = now >= critter.blinkAt;
@@ -1461,9 +1507,9 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     updatePool(puffs, dt, true);
 
     markers.forEach((marker, i) => {
-      marker.visible = focus === i && round.phase === "playing";
-      if (!marker.visible) return;
       const player = round.players[i];
+      marker.visible = focus === i && round.phase === "playing" && Boolean(player);
+      if (!marker.visible) return;
       const lift = still ? 0 : Math.abs(Math.sin(now * 5)) * .18;
       marker.position.set(player.position.x, (player.carrying ? 4.3 : 2.75) + lift, player.position.z);
     });

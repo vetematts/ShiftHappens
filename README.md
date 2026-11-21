@@ -1,6 +1,6 @@
 # Shift Happens!
 
-Overcooked, but for rostering. A duck and a bunny race around a cosy office signing staff on, passing them over the counter and pinning them onto the weekly roster before the clock runs out. Every staff member has a role, days they can work and a number of shifts, so a finished round is a real roster you can copy and use.
+Overcooked, but for rostering. Two to four critters (a duck, a bunny, a cat and a frog) race around a cosy office signing staff on, passing them over the counter and pinning them onto the weekly roster before the clock runs out. Every staff member has a role, days they can work and a number of shifts, so a finished round is a real roster you can copy and use.
 
 **[Play it now](https://vetematts.github.io/ShiftHappens/)** on a laptop or a phone.
 
@@ -14,12 +14,13 @@ Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edwa
 4. Stand at a day on the board and roster them onto an open shift that matches their role, on a day they can work. In the sample café nobody works two shifts in one day.
 5. After a shift they head home and come back while they have hours left. A sick call knocks someone off the board for that day, so refill those shifts too.
 
-Cover every shift before the clock runs out to win. The end screen shows the finished roster with a **Copy roster** button.
+Cover every shift before the clock runs out to win. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever signed on, passed and rostered the most.
 
 | | Move | Action |
 | --- | --- | --- |
 | Duck (Player 1) | WASD | Space |
 | Bunny (Player 2) | Arrow keys | Enter |
+| Cat and frog (Players 3 and 4) | Phone thumb stick | Phone action button |
 | Phone browser | Thumb stick | Action button |
 
 Playing alone? Press **Q**, or the swap button on a phone, to switch between the duck and the bunny.
@@ -42,11 +43,11 @@ It warns about places nobody can work and roles without enough shifts between th
 Like a Jackbox party game, the laptop or projector shows the game and phones become the gamepads. Nobody installs anything.
 
 1. Open the game on the laptop and select the **Phones** tile on the menu.
-2. A QR code and a four-letter room code appear. Scan the QR code with a phone camera.
-3. The first phone becomes the duck and the second becomes the bunny. The start screen ticks off each one as it connects.
+2. A QR code and a four-letter room code appear. Scan the QR code with a phone camera, or select **Copy join link** to send the link instead.
+3. Phones become the duck, the bunny, the cat and the frog, in the order they join. The menu ticks off each one as it connects. The cat and the frog walk into the office as soon as a third or fourth phone joins, even mid-round.
 4. Select **Start round** on a phone, or start from the laptop. Each phone shows a thumb stick, an action button, what its critter is holding and what the action button will do next.
 
-Extra phones wait and take over a critter as soon as a phone leaves. The keyboard keeps working, so one phone and one keyboard player can play together.
+A fifth phone waits and takes over a critter as soon as a phone leaves. If a phone leaves mid-round, its critter puts down whoever it was carrying so nobody gets stuck. The keyboard keeps driving the duck and the bunny, so keyboard and phone players can mix.
 
 **How it works.** There is no game server. The QR code opens the same GitHub Pages site with the room in the address (`#join-ABCD`). The laptop and phones find each other through public Nostr relays using [Trystero](https://github.com/dmotz/trystero), then talk directly over WebRTC. The laptop runs the whole game. Phones send their stick and button about 20 times a second, and the laptop sends each phone its critter's status 5 times a second. The game contacts the relays only after someone selects the **Phones** tile.
 

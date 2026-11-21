@@ -25,7 +25,12 @@ export type HostMessage =
     stage: "calm" | "busy" | "chaos";
     stamping: boolean;
     stamp: number;
-    dashReady: boolean;
+    /** Dash charges left (0 to 3). */
+    charges: number;
+    /** Seconds until the next timed charge refill (0 when full). */
+    regenIn: number;
+    /** Whether the speed boost from a ⚡ is active. */
+    boosted: boolean;
     time: number;
     filled: number;
     needed: number;
@@ -45,6 +50,14 @@ export const critters = [
   { name: "cat", emoji: "🐱", colour: "#ff9fb5" },
   { name: "frog", emoji: "🐸", colour: "#8fe3a0" },
 ];
+
+const cardKinds = { request: "Request", open: "Open shift", cancelled: "Cancelled" };
+
+/** Chip text for a held card. An unapproved open shift is only "for" someone; approved, they have accepted. */
+export function cardText(card: { kind: "request" | "open" | "cancelled"; day: number; worker: string; approved: boolean }, dayNames: readonly string[]) {
+  const who = !card.worker ? "" : card.kind === "open" && !card.approved ? ` · for ${card.worker}` : ` · ${card.worker}`;
+  return `${cardKinds[card.kind]} · ${dayNames[card.day]}${who}${card.approved ? " ✓" : ""}`;
+}
 
 /** Chip colours for card kinds: blue request, yellow open shift, red cancelled. */
 export const cardColours = { request: "#4f9dff", open: "#f2b705", cancelled: "#ef5a6f" };

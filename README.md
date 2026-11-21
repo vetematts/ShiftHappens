@@ -11,8 +11,9 @@ Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edwa
 | Card | What to do |
 | --- | --- |
 | 🟦 **Shift request** | Grab it from the Request Tray, hold the action button at the Manager's Desk to stamp it, pass it over the counter and pin it in its day's column on the board. |
-| 🟥 **Cancelled** | A pinned shift turns red when the worker cancels. Pull it off the board and drop it in the Shredder. A yellow open shift appears on the tray. |
-| 🟨 **Open shift** | Take it to the Staff Room and offer it to someone whose bubble shows that day. Once they accept, pin it. No stamp needed. |
+| 🟥 **Cancelled** | A pinned shift wobbles for 3 seconds, then turns red when the worker cancels. Pull it off the board and drop it in the Shredder. A yellow open shift appears on the tray. |
+| 🟨 **Open shift** | It's for one named employee. Their thought bubble flashes while you carry it: chase them down (they wander the office and slow you down if you brush past) and press action next to them to hand it over, then pin it. No stamp needed. |
+| ⚡ **Dash charges** | Each critter has 3 dash charges and one refills every 9 seconds. Grab a ⚡ off the floor to refill one, or for a 4 second speed boost when you're already full. |
 | 🐦 **Shift Snatcher** | A bin chicken sneaks to the board, steals a card and runs for the exit. Dash into it to make it drop the card, then pin it again. If it escapes, the shift becomes an open shift. |
 
 The board only takes an approved card, in an empty slot on the card's day. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). Fill all 14 slots with no red cards to win. The time left is your score. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever pinned, stamped, passed, shredded and rescued the most.
@@ -79,7 +80,7 @@ React and Vite for the page, Three.js for the 3D office, [Fredoka](https://fonts
 
 | File | What it does |
 | --- | --- |
-| `src/round.ts` | All the rules: the starting teams, request cards, stamping, pinning, cancellations, open shifts, the Staff Room, the Shift Snatcher, collisions, and every tuning number in `settings` |
+| `src/round.ts` | All the rules: the starting teams, request cards, stamping, pinning, cancellations, open shifts, the wandering employees, dash charges and ⚡ pickups, the Shift Snatcher, collisions, and every tuning number in `settings` |
 | `src/office-world.ts` | The Three.js office, critters, cards, staff, the Snatcher, board and effects |
 | `src/shift-happens.tsx` | The game screen: input, HUD, menu, how to play, results, and the phone lobby |
 | `src/team-setup.tsx` | The **Roster my team** steps: business, roles and shifts, team, week. Saved in the browser |

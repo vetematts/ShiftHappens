@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import { cardColours, critters, openLink, type HostMessage, type Link } from "./phone-link";
+import { cardColours, cardText, critters, openLink, type HostMessage, type Link } from "./phone-link";
 import { days } from "./round";
 
-const kindNames = { request: "Request", open: "Open shift", cancelled: "Cancelled" };
 const stageNames = { calm: "Calm", busy: "Busy!", chaos: "Chaos!" };
 const stickReach = 56;
 
@@ -16,6 +15,8 @@ function momentBetween(before: Status | null, after: Status): Moment | null {
   if (before.phase === "playing" && after.phase === "won") return { text: "Week covered! 🎉", kind: "win", buzz: [60, 40, 60, 40, 140] };
   if (before.phase === "playing" && after.phase === "lost") return { text: "Time’s up!", kind: "lose", buzz: 300 };
   if (after.phase !== "playing") return null;
+  if (after.boosted && !before.boosted) return { text: "Boost! ⚡", kind: "good", buzz: [30, 30, 60] };
+  if (after.charges > before.charges && before.regenIn > 0.6) return { text: "⚡ +1", kind: "good", buzz: 30 };
   if ((after.stats?.pinned ?? 0) > (before.stats?.pinned ?? 0)) return { text: "Pinned! 📌", kind: "good", buzz: [30, 40, 30] };
   if ((after.stats?.stamped ?? 0) > (before.stats?.stamped ?? 0)) return { text: "Stamped ✓", kind: "good", buzz: 40 };
   if (after.news && after.news !== before.news) {
@@ -204,9 +205,10 @@ export default function PhoneController({ code, local }: { code: string; local: 
           <section className="gp-status" aria-live="polite">
             {status?.card && (
               <b className="person-chip" style={{ "--role": cardColours[status.card.kind] } as CSSProperties}>
-                {kindNames[status.card.kind]} · {days[status.card.day]}{status.card.worker ? ` · ${status.card.worker}` : ""}{status.card.approved ? " ✓" : ""}
+                {cardText(status.card, days)}
               </b>
             )}
+            {status?.boosted && playing && <b className="boost-tag">BOOST</b>}
             <p>{!status ? "Connected" : playing ? (status.stamping ? "Stamping…" : status.prompt) : status.phase === "ready" ? "Ready when you are" : status.phase === "won" ? "Fully rostered!" : "Understaffed"}</p>
             {status && <small>Roster {status.filled}/{status.needed} · {clock(status.time)} left{playing && <> · <span className={`gp-stage gp-stage--${status.stage}`}>{stageNames[status.stage]}</span></>}</small>}
             {status?.stamping && <progress className="gp-progress" value={status.stamp} max={1} aria-label="Approval progress" />}
@@ -220,10 +222,10 @@ export default function PhoneController({ code, local }: { code: string; local: 
                 <span ref={knob} />
               </div>
               <div className="gp-buttons">
-                <button type="button" className="gp-dash" data-ready={status?.dashReady ?? true}
+                <button type="button" className="gp-dash" data-ready={(status?.charges ?? 3) > 0}
                   onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); dashing(true); }}
                   onPointerUp={() => dashing(false)} onPointerCancel={() => dashing(false)} onLostPointerCapture={() => dashing(false)}>
-                  Dash
+                  Dash <span className="gp-pips" aria-label={`${status?.charges ?? 3} dashes left`}>{"⚡".repeat(status?.charges ?? 3)}</span>
                 </button>
                 <button type="button" className="gp-action"
                   onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); act(true); }}
@@ -237,7 +239,7 @@ export default function PhoneController({ code, local }: { code: string; local: 
               <button type="button" className="gp-start" onClick={startRound}>
                 {status?.phase === "ready" || !status ? "Start round" : "Play again"}
               </button>
-              <p>Watch the big screen. Move with the stick. Action grabs, stamps, passes and pins cards. Dash bowls over the Shift Snatcher.</p>
+              <p>Watch the big screen. Move with the stick. Action grabs, stamps, passes and pins cards. Chase employees to hand over open shifts. Dash bowls over the Shift Snatcher; grab ⚡ to recharge.</p>
             </section>
           )}
         </>

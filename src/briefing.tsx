@@ -54,7 +54,7 @@ export function Briefing({ left, seats, ready, onGo }: {
 
       <ul className="brief-watch" aria-label="Watch out for">
         <li><span aria-hidden="true">🐔</span><b>Dash it!</b></li>
-        <li><span aria-hidden="true">🍌</span><b>Don’t slip!</b></li>
+        <li><span aria-hidden="true">💦</span><b>Don’t slip!</b></li>
         <li><span className="brief-mini" aria-hidden="true"><Card kind="cancelled" day="Fri" /></span><b>Shred it!</b></li>
       </ul>
 

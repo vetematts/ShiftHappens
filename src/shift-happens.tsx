@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type
 import { createOfficeWorld } from "./office-world";
 import {
   beginRound, cardIn, dash, days, dropCarried, ensurePlayers, filledShifts, heldCard, interact, neededShifts, newRound, nextAction, roleIn, roster,
-  sampleTeam, settings, shiftLabel, shifts, stageAt, stepRound, stopStamp, templates, walk,
+  quickTeam, sampleTeam, settings, shifts, stageAt, stepRound, stopStamp, templates, walk,
   type Round, type Stage, type Team,
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
@@ -49,6 +49,7 @@ const tips = [
   "Dash into the Shift Snatcher to make it drop the cards it stole.",
   "When the water cooler leaks, the tray is flooded for a few seconds. Wait it out, or risk a slip.",
   "Playing alone? Press Q to swap between the critters.",
+  "Need a breather? Press Esc to pause.",
   "Roster my team works for cafés, clinics, salons or anything with shifts.",
   "Scan the QR code and your phones become the controllers. Up to four can play.",
 ];
@@ -133,7 +134,8 @@ function Pips({ charges }: { charges: number }) {
 
 function CardChip({ card }: { card: NonNullable<HeldCard> }) {
   return (
-    <span className="person-chip" data-kind={card.kind} style={{ "--role": cardColours[card.kind] } as CSSProperties}>
+    <span className="person-chip" data-kind={card.kind} data-approved={card.approved && card.kind !== "cancelled"}
+      style={{ "--role": cardColours[card.kind] } as CSSProperties}>
       {cardText(card, days)}
     </span>
   );
@@ -252,6 +254,9 @@ function Game() {
   // Which critter to mark and follow: always on touch screens, and on keyboards once someone swaps.
   const focus = useRef<number | null>(null);
   const holding = useRef(new Map<string, number>());
+  // While paused the round stands still: no walking, no clock, no spawns. The ref is read by the loop, the state shows the menu.
+  const paused = useRef(false);
+  const [pauseOpen, setPauseOpen] = useState(false);
   const [lead, setLead] = useState(0);
   const [keyedP2, setKeyedP2] = useState(false);
   const [count, setCount] = useState(2);
@@ -317,13 +322,13 @@ function Game() {
   }
 
   function swap() {
-    if (round.current.phase !== "playing") return;
+    if (round.current.phase !== "playing" || paused.current) return;
     switchTo(swapTarget(active.current, round.current.players.length, player2.current, seats.current));
   }
 
   function press(code: string) {
     sound.current?.unlock();
-    if (round.current.phase !== "playing" || keys.current.has(code)) return;
+    if (round.current.phase !== "playing" || paused.current || keys.current.has(code)) return;
     keys.current.add(code);
     if (code === swapKey) {
       swap();
@@ -360,9 +365,34 @@ function Game() {
     if (critter !== undefined) stopStamp(round.current, critter);
   }
 
+  /** Freezes the round and opens the pause menu. Held keys and stamps are let go so nothing carries on in the background. */
+  function pause() {
+    if (round.current.phase !== "playing" || paused.current) return;
+    paused.current = true;
+    keys.current.clear();
+    holding.current.clear();
+    stickUp();
+    round.current.players.forEach((_, i) => stopStamp(round.current, i));
+    setPauseOpen(true);
+  }
+
+  function resume() {
+    paused.current = false;
+    setPauseOpen(false);
+    host.current?.focus({ preventScroll: true });
+  }
+
+  function backToMenu() {
+    paused.current = false;
+    setPauseOpen(false);
+    round.current = newRound();
+    setView(snapshot(round.current));
+  }
+
   // Keyboard listeners live in an effect, so they reach the latest press and release through effect events.
   const onKeyDown = useEffectEvent((code: string) => press(code));
   const onKeyUp = useEffectEvent((code: string) => release(code));
+  const onPauseKey = useEffectEvent(() => (paused.current ? resume() : pause()));
 
   function seatPhone(peer: string) {
     let seat = seats.current.indexOf(peer);
@@ -411,7 +441,7 @@ function Game() {
     const clamp = (value: number) => Math.max(-1, Math.min(1, Number(value) || 0));
     input.x = clamp(message.x);
     input.y = clamp(message.y);
-    if (message.dash && !input.dash && round.current.phase === "playing") dash(round.current, seat);
+    if (message.dash && !input.dash && round.current.phase === "playing" && !paused.current) dash(round.current, seat);
     input.dash = Boolean(message.dash);
     if (message.act && !input.act) press(`Phone${seat}`);
     if (!message.act && input.act) release(`Phone${seat}`);
@@ -489,8 +519,9 @@ function Game() {
     let lastUi = 0;
     let lastFit = 0;
 
-    // Keep the office clear of the HUD: the camera frames the room between the top bar (plus a lane for
-    // news toasts) and the player panels, so alerts and stats never sit on top of the Roster Board.
+    // Keep the office clear of the HUD: the camera frames the room between the top bar and the player panels,
+    // so alerts and stats never sit on top of the Roster Board. On landscape screens the back wall may rise into
+    // the empty middle of the top bar, between the logo and the stats.
     function fitAroundHud() {
       if (!world || !viewport) return;
       const page = viewport.closest("main");
@@ -501,23 +532,17 @@ function Game() {
       const stage = viewport.getBoundingClientRect();
       const shown = (selector: string) => [...page.querySelectorAll<HTMLElement>(selector)]
         .map(element => element.getBoundingClientRect()).filter(box => box.width > 0 && box.height > 0);
-      const hudBottom = Math.max(0, ...shown(".hud, .week-strip").map(box => box.bottom - stage.top));
-      const lowest = shown(".pads, .touch").map(box => stage.bottom - box.top);
+      const hudBottom = Math.max(0, ...shown(".hud").map(box => box.bottom - stage.top));
+      const lowest = shown(".touch").map(box => stage.bottom - box.top);
+      const [stack] = shown(".pads");
       const gap = 10;
-      world.setInsets(hudBottom + gap, Math.max(0, ...lowest) + gap);
-      // News toasts take the week strip's place while they show, as wide as the gap between the logo and the stats
-      const [strip] = shown(".week-strip");
-      const [stats] = shown(".hud-stats");
-      if (strip && stats) {
-        const [brand] = shown(".brand");
-        const centre = stage.left + stage.width / 2;
-        const ownRow = strip.top >= stats.bottom - 2;
-        const room = ownRow ? stage.width - 16
-          : 2 * Math.min(centre - (brand?.right ?? stage.left), stats.left - centre) - 24;
-        page.style.setProperty("--strip-top", `${Math.round(strip.top - stage.top)}px`);
-        page.style.setProperty("--strip-height", `${Math.round(strip.height)}px`);
-        page.style.setProperty("--news-width", `${Math.round(Math.max(strip.width, room))}px`);
-      }
+      const boxes = shown(".brand, .hud-stats").map(box => ({
+        left: box.left - stage.left - gap, right: box.right - stage.left + gap, bottom: box.bottom - stage.top + gap,
+      }));
+      world.setInsets(hudBottom + gap, Math.max(0, ...lowest) + gap, boxes, stack ? stack.right - stage.left + gap : 0);
+      // News toasts float just above the player panels, over the front edge of the office, so they never hide the
+      // Roster Board at the back (which can now reach up into the top bar).
+      page.style.setProperty("--news-bottom", `${Math.round(Math.max(0, ...lowest) + gap)}px`);
     }
     let lastBroadcast = 0;
     let displayedPhase: Round["phase"] | undefined;
@@ -556,7 +581,7 @@ function Game() {
           effects.play("pick");
         }
       }
-      if (state.phase === "playing" && world) {
+      if (state.phase === "playing" && world && !paused.current) {
         const moves = state.players.map(() => ({ across: 0, downward: 0 }));
         const pressed = keys.current;
         keyboards.forEach(({ up, left, down, right }, i) => {
@@ -583,7 +608,8 @@ function Game() {
         // Music speeds up each stage, and again for the last ten seconds
         effects.setMusic(left <= 10 ? 1.35 : musicTempo[stageAt(state.elapsed)]);
       } else {
-        lastTick = Infinity;
+        // Keep the last tick through a pause, so the same second doesn't tick twice on resuming
+        if (state.phase !== "playing") lastTick = Infinity;
         effects.setMusic(0);
       }
       if (now - lastFit >= 250) {
@@ -602,7 +628,7 @@ function Game() {
           if (!peer) return;
           const player = latest.players[i];
           phoneLink.current!.send({
-            t: "status", phase: state.phase, prompt: player?.prompt ?? "", card: player?.card ?? null, stage: latest.stage,
+            t: "status", phase: state.phase, prompt: paused.current ? "Paused" : player?.prompt ?? "", card: player?.card ?? null, stage: latest.stage,
             stamping: player?.stamping ?? false, stamp: player?.stamp ?? 0,
             charges: player?.charges ?? settings.dashCharges, regenIn: player?.regenIn ?? 0, boosted: player?.boosted ?? false,
             time: latest.time, filled: latest.filled, needed: latest.needed, news: latest.news,
@@ -623,6 +649,12 @@ function Game() {
     }
 
     function keydown(event: KeyboardEvent) {
+      // Esc pauses a round in progress, and resumes it from the pause menu
+      if (event.code === "Escape" && round.current.phase === "playing") {
+        event.preventDefault();
+        if (!event.repeat) onPauseKey();
+        return;
+      }
       if (briefUntil.current && (event.code === "Enter" || event.code === "Space") && !event.repeat) {
         event.preventDefault();
         onBriefDone();
@@ -682,6 +714,8 @@ function Game() {
   function start(mode: "quick" | "real" = lastMode.current, brief = round.current.phase === "ready") {
     if (countdownUntil.current || briefUntil.current) return;
     lastMode.current = mode;
+    paused.current = false;
+    setPauseOpen(false);
     setSetup(false);
     sound.current?.unlock();
     keys.current.clear();
@@ -700,7 +734,7 @@ function Game() {
         shiftNames: [team.shiftNames[0].trim() || "AM", team.shiftNames[1].trim() || "PM"],
         people: team.people.filter(person => person.name.trim()).map(person => ({ ...person, name: person.name.trim() })),
       }, true, total)
-      : newRound(sampleTeam, false, total);
+      : newRound(quickTeam, false, total);
     round.current = state;
     setView(snapshot(state));
     host.current?.focus({ preventScroll: true });
@@ -794,7 +828,7 @@ function Game() {
   function dashDown(event: PointerEvent<HTMLButtonElement>) {
     event.preventDefault();
     sound.current?.unlock();
-    dash(round.current, active.current);
+    if (!paused.current) dash(round.current, active.current);
   }
 
   const phoneSeats = phones?.seats ?? [];
@@ -872,12 +906,7 @@ function Game() {
 
         <header className="hud">
           <div className="brand" aria-label="Shift Happens!"><span className="brand-tag">Shift</span><span className="brand-word">Happens!</span></div>
-          <div className="hud-stats" aria-label="Round score">
-            <div className="stat stat-covered">
-              <small>Roster</small>
-              <strong>{view.filled}<i>/{view.needed}</i></strong>
-              <span className="stat-bar" aria-hidden="true"><span style={{ width: `${progress * 100}%` }} /></span>
-            </div>
+          <div className="hud-stats" aria-label="Round clock">
             <div className={`stat stat-time${urgent ? " is-urgent" : ""}`} style={{ "--left": Math.max(0, view.time) / settings.duration } as CSSProperties}>
               <span className="stat-ring" aria-hidden="true" />
               <small>Time</small>
@@ -885,60 +914,39 @@ function Game() {
             </div>
             <div className="stat stat-stage" data-stage={view.stage}><small>Stage</small><strong>{stageNames[view.stage]}</strong></div>
             {phones && <div className="stat stat-chip" title={`Room ${phones.code}`}><small>Phones</small><strong>📱{phones.seats.filter(Boolean).length}</strong></div>}
-            <button type="button" className="icon-btn" onClick={toggleSound}
-              aria-pressed={!muted} aria-label={muted ? "Turn sound on" : "Turn sound off"}>{muted ? "🔇" : "🔊"}</button>
+            {playing && (
+              // Touch screens only: keyboards pause with Esc, so the button stays out of the way on desktops
+              <button type="button" className="icon-btn hud-pause" onClick={() => (pauseOpen ? resume() : pause())}
+                aria-pressed={pauseOpen} aria-label={pauseOpen ? "Resume" : "Pause (Esc)"} title="Pause (Esc)">⏸</button>
+            )}
           </div>
         </header>
-
-        {playing && (
-          <ol className="week-strip" aria-label="Roster Board" data-covered={Boolean(view.news)}>
-            {days.map((day, d) => (
-              <li key={day} data-state={view.strip[d].state === "closed" && view.strip[d + 7].state === "closed" ? "closed" : undefined}>
-                <b>{day}</b>
-                {[d, d + 7].map(index => {
-                  const slot = view.strip[index];
-                  return (
-                    <span key={index} className="strip-slot" data-state={slot.state} style={{ "--role": slot.colour } as CSSProperties}
-                      aria-label={`${shiftLabel(view.shiftNames, index)}: ${slot.state === "filled" ? slot.name : slot.state === "closed" ? "not needed" : slot.state}`}>
-                      {slotText(slot)}
-                    </span>
-                  );
-                })}
-              </li>
-            ))}
-          </ol>
-        )}
 
         {playing && view.news && <p className="toast" role="status" key={view.news}><span aria-hidden="true">📞</span> {view.news}</p>}
         {banner && <p className="banner" data-stage={banner} role="status" key={banner}>{stageNames[banner]}</p>}
 
         {playing && (
-          <div className="pads" data-count={panelCount} aria-label="Player controls">
+          <div className="pads" aria-label="Players">
             {Array.from({ length: panelCount }, (_, critter) => {
               const player = view.players[critter];
               if (!player) return null;
               const { emoji, name, colour } = critters[critter];
-              const keyed = critter === lead ? 0 : critter === 1 ? 1 : -1;
-              const phone = phoneSeats[critter];
+              const card = player.card;
               return (
                 <section className="pad-card" key={name} style={{ "--critter": colour } as CSSProperties}
                   data-lead={critter === lead} aria-label={`Player ${critter + 1}, the ${name}`}>
                   <span className="pad-avatar" aria-hidden="true">{emoji}
                     {player.stamping && <svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="16" pathLength="1" style={{ strokeDashoffset: 1 - player.stamp }} /></svg>}
                   </span>
-                  <div>
-                    <div className="pad-keys">
-                      <b>P{critter + 1}</b>{" "}
-                      {phone ? "📱 phone" : keyed >= 0 ? (
-                        <><kbd>{keyboards[keyed].guide}</kbd> <kbd>{keyboards[keyed].action}</kbd> <kbd>{keyboards[keyed].dashGuide}</kbd>{keyed === 0 && swapTo !== lead && <> <kbd>Q</kbd> swap</>}</>
-                      ) : "not on keyboard"}
-                      <Pips charges={player.charges} />{player.boosted && <b className="boost-tag">BOOST</b>}
-                    </div>
-                    <p className="pad-prompt">
-                      {player.card && <CardChip card={player.card} />}
-                      <span>{player.stamping ? "Stamping…" : player.prompt}</span>
-                    </p>
-                  </div>
+                  <b className="pad-name">P{critter + 1}</b>
+                  <Pips charges={player.charges} />
+                  {player.boosted && <b className="boost-tag">BOOST</b>}
+                  {card && (
+                    <span className="pad-card-chip person-chip" data-kind={card.kind} data-approved={card.approved && card.kind !== "cancelled"}
+                      style={{ "--role": cardColours[card.kind] } as CSSProperties} title={cardText(card, days)}>
+                      {days[card.day]}{card.approved && card.kind !== "cancelled" ? " ✓" : ""}
+                    </span>
+                  )}
                 </section>
               );
             })}
@@ -992,6 +1000,26 @@ function Game() {
           </div>
         )}
 
+        {playing && pauseOpen && (
+          <div className="screen screen--pause">
+            <div className="panel panel-pause" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+              <p className="kicker">Paused</p>
+              <h2 id="pause-title">Tea break</h2>
+              <div className="end-stats">
+                <span><b>{view.filled}/{view.needed}</b><small>shifts rostered</small></span>
+                <span><b>{clock(view.time)}</b><small>time left</small></span>
+              </div>
+              <div className="pause-actions">
+                <button type="button" className="btn btn-primary" onClick={resume} autoFocus>Resume</button>
+                <button type="button" className="btn btn-soft" onClick={() => start()}>Restart round</button>
+                <button type="button" className="btn btn-ghost" onClick={toggleSound}>Sound: {muted ? "off" : "on"}</button>
+                <button type="button" className="btn btn-ghost" onClick={backToMenu}>Back to menu</button>
+              </div>
+              <p className="how-note">Press <kbd>Esc</kbd> to carry on.</p>
+            </div>
+          </div>
+        )}
+
         {graphics === "ready" && !playing && !countIn && !briefLeft && (
           <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}
             onClick={event => event.target === event.currentTarget && closeOverlay()}>
@@ -1021,7 +1049,7 @@ function Game() {
                     <tr><th scope="row">P3 🐱 P4 🐸</th><td colSpan={3}>Phones: scan the QR code under Phones</td></tr>
                   </tbody>
                 </table>
-                <p className="how-note">Playing alone? Press <kbd>Q</kbd> to cycle through the critters.</p>
+                <p className="how-note">Playing alone? Press <kbd>Q</kbd> to cycle through the critters. Press <kbd>Esc</kbd> to pause.</p>
                 <div className="actions">
                   <button type="button" className="btn btn-primary" onClick={() => { setHelp(false); start("quick", false); }}>Got it, let’s play</button>
                   <button type="button" className="btn btn-ghost" onClick={() => setHelp(false)}>Back</button>
@@ -1053,7 +1081,7 @@ function Game() {
                     <span className="count-touch">Everyone else joins on their own phone: tap Phones below and they scan the code.</span>
                   </p>
                 </div>
-                <BigButton tone="primary" icon="▶" title="Quick play" note={`Sample café · 2 minutes · ${players} players`} onClick={() => start("quick")} />
+                <BigButton tone="primary" icon="▶" title="Quick play" note={`Dental clinic · Mon–Fri · 2 minutes · ${players} players`} onClick={() => start("quick")} />
                 <BigButton tone="roster" icon="📋" title="Roster my team"
                   note={custom && savedKind ? `Continue your ${savedKind.label.toLowerCase()} week · ${team.people.length} people` : "Your staff and shifts in, a real roster out"}
                   onClick={() => setSetup(true)} />
@@ -1077,7 +1105,7 @@ function Game() {
               </div>
             ) : (
               <div className="panel panel-end">
-                <p className="kicker">{view.custom ? "Your week" : "Sample café"}</p>
+                <p className="kicker">{view.custom ? "Your week" : "Dental clinic"}</p>
                 <h2 className={view.phase === "won" ? "end-won" : "end-lost"}>
                   {view.phase === "won" ? `Fully rostered with ${clock(view.time)} to spare!` : `Understaffed: ${view.filled}/${view.needed}`}
                 </h2>
@@ -1102,7 +1130,7 @@ function Game() {
                 <div className="actions">
                   <button type="button" className="btn btn-soft" onClick={copyRoster}>{copied ? "Copied ✓" : "Copy roster"}</button>
                   {view.custom && <button type="button" className="btn btn-soft" onClick={() => setSetup(true)}>Edit team</button>}
-                  <button type="button" className="btn btn-ghost" onClick={() => { round.current = newRound(); setView(snapshot(round.current)); }}>Menu</button>
+                  <button type="button" className="btn btn-ghost" onClick={backToMenu}>Menu</button>
                   <button type="button" className="btn btn-primary" onClick={() => start()}>Play again</button>
                 </div>
                 {phonePanel}

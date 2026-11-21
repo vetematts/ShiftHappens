@@ -256,7 +256,8 @@ export default function PhoneController({ code, local }: { code: string; local: 
         <>
           <section className="gp-status" aria-live="polite">
             {status?.card && (
-              <b className="person-chip" style={{ "--role": cardColours[status.card.kind] } as CSSProperties}>
+              <b className="person-chip" data-approved={status.card.approved && status.card.kind !== "cancelled"}
+                style={{ "--role": cardColours[status.card.kind] } as CSSProperties}>
                 {cardText(status.card, days)}
               </b>
             )}

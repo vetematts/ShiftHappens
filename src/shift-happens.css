@@ -27,7 +27,14 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 
 /* The office fills the screen */
 .sh { position: relative; width: 100%; max-width: none; height: 100svh; margin: 0; padding: 0; color: var(--cream); }
-.stage { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(circle at 50% 30%, #f7b7c6, #b78fd6 60%, #5b4596); }
+/* The backdrop follows the round: blue while calm, yellow when busy, red in chaos (menus keep the pink and purple). */
+@property --bg-glow { syntax: "<color>"; inherits: true; initial-value: #f7b7c6; }
+@property --bg-mid { syntax: "<color>"; inherits: true; initial-value: #b78fd6; }
+@property --bg-edge { syntax: "<color>"; inherits: true; initial-value: #5b4596; }
+.stage { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(circle at 50% 30%, var(--bg-glow), var(--bg-mid) 60%, var(--bg-edge)); transition: --bg-glow 1.2s ease, --bg-mid 1.2s ease, --bg-edge 1.2s ease; }
+.sh[data-stage=calm] { --bg-glow: #bfe4ff; --bg-mid: #6fa8ec; --bg-edge: #2f4f9e; }
+.sh[data-stage=busy] { --bg-glow: #fff1b3; --bg-mid: #f2bd45; --bg-edge: #a8641a; }
+.sh[data-stage=chaos] { --bg-glow: #ffc2c2; --bg-mid: #ec5f6c; --bg-edge: #8e1f3a; }
 .stage-canvas { position: absolute; inset: 0; outline: none; }
 .stage-canvas canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .sh--urgent .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 6px rgb(255 90 118 / .7), inset 0 0 6rem rgb(255 90 118 / .35); animation: throb .5s ease-in-out infinite alternate; }

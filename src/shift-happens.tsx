@@ -736,7 +736,7 @@ function Game() {
   );
 
   return (
-    <main className={`sh${urgent ? " sh--urgent" : ""}${playing ? " sh--playing" : ""}`}>
+    <main className={`sh${urgent ? " sh--urgent" : ""}${playing ? " sh--playing" : ""}`} data-stage={playing ? view.stage : undefined}>
       <section className="stage" aria-label="Office">
         <div className="stage-canvas" ref={host} tabIndex={0} />
 

@@ -366,46 +366,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     }
   }
   scene.add(tiles);
-  // Chaos turns the floor into a disco: the tiles go dark, and random squares light up bright on a beat and switch off
-  // again (no blue, so a lit square never looks like the slippery puddle)
-  const tileBase = Array.from({ length: tileCols * tileRows }, (_, i) => {
-    const row = Math.floor(i / tileCols);
-    const set = row < tileMid ? colours.tileBack : colours.tileFront;
-    return new T.Color(set[(row + (i % tileCols)) % 2]);
-  });
-  const tileDark = tileBase.map((_, i) => new T.Color((Math.floor(i / tileCols) + (i % tileCols)) % 2 ? 0x2c2348 : 0x211a3a));
-  const discoColours = [0xff3d9a, 0xff8a1f, 0xffe02e, 0x9a5cff, 0x3dff8f].map(hex => new T.Color(hex).multiplyScalar(1.7));
-  const discoLevel = new Float32Array(tileCols * tileRows);
-  const discoHue = new Uint8Array(tileCols * tileRows);
-  let discoBeat = 0;
-  // How far the floor has dimmed for the disco, from 0 (normal tiles) to 1 (dark)
-  let discoDark = 0;
-  function discoFloor(on: boolean, now: number, dt: number) {
-    if (!on && discoDark === 0) return;
-    discoDark = on ? Math.min(1, discoDark + dt * 2.5) : Math.max(0, discoDark - dt * 2.5);
-    if (on && now >= discoBeat) {
-      discoBeat = now + .45;
-      for (let n = 0; n < 9; n++) {
-        const size = 2 + Math.floor(Math.random() * 2);
-        const col = Math.floor(Math.random() * (tileCols - size + 1));
-        const row = Math.floor(Math.random() * (tileRows - size + 1));
-        const hue = Math.floor(Math.random() * discoColours.length);
-        for (let r = row; r < row + size; r++) {
-          for (let c = col; c < col + size; c++) {
-            discoLevel[r * tileCols + c] = 1;
-            discoHue[r * tileCols + c] = hue;
-          }
-        }
-      }
-    }
-    for (let i = 0; i < discoLevel.length; i++) {
-      discoLevel[i] = on ? Math.max(0, discoLevel[i] - dt * 2.2) : 0;
-      // A lit tile stays fully on for most of the beat, then snaps back to dark
-      tint.copy(tileBase[i]).lerp(tileDark[i], discoDark).lerp(discoColours[discoHue[i]], Math.min(1, discoLevel[i] * 3));
-      tiles.setColorAt(i, tint);
-    }
-    if (tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
-  }
   const rugLeft = office.tray.x - furniture.inbox.w / 2 - .35;
   const rugRight = office.desk.x + furniture.desk.w / 2 + .35;
   const rugX = (rugLeft + rugRight) / 2;
@@ -2277,8 +2237,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     hand.rotation.z = -(round.elapsed / settings.duration) * Math.PI * 2;
     (clockRim.material as T.MeshStandardMaterial).color.setHex(round.phase === "playing" && left <= 10 && Math.sin(now * 10) > 0 ? 0xff3355 : 0xff7a8a);
 
-    // No flashing floor for anyone who prefers reduced motion
-    discoFloor(round.stage === "chaos" && round.phase === "playing" && !still, now, dt);
     const twinkle = round.stage !== "calm" && round.phase === "playing" ? 6 : 1.6;
     for (let i = 0; i < bulbCount; i++) {
       const level = .75 + Math.sin(now * twinkle + i * 1.7) * .25;

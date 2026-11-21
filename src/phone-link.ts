@@ -6,9 +6,11 @@
  * stand-in that only connects tabs in the same browser, for testing without a network.
  */
 
+import type { Stats } from "./round";
+
 /** What a phone sends: where its stick points, whether the action button is held, and requests to start a round. */
 export type PhoneMessage =
-  | { t: "input"; x: number; y: number; act: boolean }
+  | { t: "input"; x: number; y: number; act: boolean; dash: boolean }
   | { t: "start" };
 
 /** What the laptop sends back: which critter the phone controls, and what that critter is doing. */
@@ -18,10 +20,12 @@ export type HostMessage =
     t: "status";
     phase: "ready" | "playing" | "won" | "lost";
     prompt: string;
-    carrying: string;
-    colour: string;
-    approved: boolean;
+    /** The card the critter holds, if any: kind, day (0 = Mon), worker name and whether it is approved. */
+    card: { kind: "request" | "open" | "cancelled"; day: number; worker: string; approved: boolean } | null;
+    stage: "calm" | "busy" | "chaos";
     stamping: boolean;
+    stamp: number;
+    dashReady: boolean;
     time: number;
     filled: number;
     needed: number;
@@ -29,10 +33,21 @@ export type HostMessage =
     /** Seconds left in the 3-2-1 countdown before a round starts, or 0. */
     countdown?: number;
     /** This critter's tallies this round, for the results on the phone. */
-    stats?: { rostered: number; signed: number; passed: number };
+    stats?: Stats;
     /** Award titles this critter won, once the round has ended. */
     awards?: string[];
   };
+
+/** The helper critters, by seat. */
+export const critters = [
+  { name: "duck", emoji: "🐥", colour: "#ffd54f" },
+  { name: "bunny", emoji: "🐰", colour: "#cdb8ff" },
+  { name: "cat", emoji: "🐱", colour: "#ff9fb5" },
+  { name: "frog", emoji: "🐸", colour: "#8fe3a0" },
+];
+
+/** Chip colours for card kinds: blue request, yellow open shift, red cancelled. */
+export const cardColours = { request: "#4f9dff", open: "#f2b705", cancelled: "#ef5a6f" };
 
 export type Message = PhoneMessage | HostMessage;
 

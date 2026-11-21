@@ -1,12 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import { openLink, type HostMessage, type Link } from "./phone-link";
+import { cardColours, critters, openLink, type HostMessage, type Link } from "./phone-link";
+import { days } from "./round";
 
-const critters = [
-  { name: "duck", emoji: "🐥", colour: "#ffd54f" },
-  { name: "bunny", emoji: "🐰", colour: "#cdb8ff" },
-  { name: "cat", emoji: "🐱", colour: "#9fd0ff" },
-  { name: "frog", emoji: "🐸", colour: "#9be58a" },
-];
+const kindNames = { request: "Request", open: "Open shift", cancelled: "Cancelled" };
+const stageNames = { calm: "Calm", busy: "Busy!", chaos: "Chaos!" };
 const stickReach = 56;
 
 type Status = Extract<HostMessage, { t: "status" }>;
@@ -19,9 +16,12 @@ function momentBetween(before: Status | null, after: Status): Moment | null {
   if (before.phase === "playing" && after.phase === "won") return { text: "Week covered! 🎉", kind: "win", buzz: [60, 40, 60, 40, 140] };
   if (before.phase === "playing" && after.phase === "lost") return { text: "Time’s up!", kind: "lose", buzz: 300 };
   if (after.phase !== "playing") return null;
-  if ((after.stats?.rostered ?? 0) > (before.stats?.rostered ?? 0)) return { text: "Rostered! 📌", kind: "good", buzz: [30, 40, 30] };
-  if ((after.stats?.signed ?? 0) > (before.stats?.signed ?? 0)) return { text: "Signed on ✓", kind: "good", buzz: 40 };
-  if (after.news && after.news !== before.news && after.news.includes("called in sick")) return { text: "Sick call! 📞", kind: "alert", buzz: [120, 60, 120] };
+  if ((after.stats?.pinned ?? 0) > (before.stats?.pinned ?? 0)) return { text: "Pinned! 📌", kind: "good", buzz: [30, 40, 30] };
+  if ((after.stats?.stamped ?? 0) > (before.stats?.stamped ?? 0)) return { text: "Stamped ✓", kind: "good", buzz: 40 };
+  if (after.news && after.news !== before.news) {
+    if (after.news.includes("cancelled")) return { text: "Cancelled! 📞", kind: "alert", buzz: [120, 60, 120] };
+    if (/Snatcher (is loose|grabbed)/.test(after.news)) return { text: "Snatcher! 🐦", kind: "alert", buzz: [120, 60, 120] };
+  }
   return null;
 }
 
@@ -34,7 +34,7 @@ function clock(seconds: number) {
 export default function PhoneController({ code, local }: { code: string; local: boolean }) {
   const link = useRef<Link | null>(null);
   const host = useRef<string | null>(null);
-  const input = useRef({ x: 0, y: 0, act: false, pointer: -1, originX: 0, originY: 0 });
+  const input = useRef({ x: 0, y: 0, act: false, dash: false, pointer: -1, originX: 0, originY: 0 });
   const knob = useRef<HTMLSpanElement>(null);
   const [connection, setConnection] = useState<"connecting" | "connected" | "lost">("connecting");
   const [seat, setSeat] = useState<number | null>(null);
@@ -78,13 +78,13 @@ export default function PhoneController({ code, local }: { code: string; local: 
       // Send the stick about 20 times a second when it moves, and a heartbeat otherwise
       timer = window.setInterval(() => {
         if (!host.current) return;
-        const { x, y, act } = input.current;
+        const { x, y, act, dash } = input.current;
         const now = performance.now();
-        const state = `${x.toFixed(2)},${y.toFixed(2)},${act}`;
+        const state = `${x.toFixed(2)},${y.toFixed(2)},${act},${dash}`;
         if (state === last && now - lastSent < 300) return;
         last = state;
         lastSent = now;
-        opened.send({ t: "input", x, y, act }, host.current);
+        opened.send({ t: "input", x, y, act, dash }, host.current);
       }, 50);
     }).catch(() => setConnection("lost"));
     return () => {
@@ -107,8 +107,8 @@ export default function PhoneController({ code, local }: { code: string; local: 
 
   function sendNow() {
     if (!host.current || !link.current) return;
-    const { x, y, act } = input.current;
-    link.current.send({ t: "input", x, y, act }, host.current);
+    const { x, y, act, dash } = input.current;
+    link.current.send({ t: "input", x, y, act, dash }, host.current);
   }
 
   function moveStick(clientX: number, clientY: number) {
@@ -144,6 +144,12 @@ export default function PhoneController({ code, local }: { code: string; local: 
     input.current.act = held;
     sendNow();
     if (held && navigator.vibrate) navigator.vibrate(15);
+  }
+
+  function dashing(held: boolean) {
+    input.current.dash = held;
+    sendNow();
+    if (held && navigator.vibrate) navigator.vibrate(10);
   }
 
   const critter = seat !== null && seat >= 0 ? critters[seat] : null;
@@ -184,9 +190,11 @@ export default function PhoneController({ code, local }: { code: string; local: 
           )) : <p className="gp-award gp-award--none">No award this round. Steal one next time!</p>}
           {status.stats && (
             <dl className="gp-stats">
-              <div><dt>Rostered</dt><dd>{status.stats.rostered}</dd></div>
-              <div><dt>Signed on</dt><dd>{status.stats.signed}</dd></div>
+              <div><dt>Pinned</dt><dd>{status.stats.pinned}</dd></div>
+              <div><dt>Stamped</dt><dd>{status.stats.stamped}</dd></div>
               <div><dt>Passed</dt><dd>{status.stats.passed}</dd></div>
+              {status.stats.shredded > 0 && <div><dt>Shredded</dt><dd>{status.stats.shredded}</dd></div>}
+              {status.stats.rescues > 0 && <div><dt>Rescues</dt><dd>{status.stats.rescues}</dd></div>}
             </dl>
           )}
           <button type="button" className="gp-start" onClick={startRound}>Play again</button>
@@ -194,13 +202,14 @@ export default function PhoneController({ code, local }: { code: string; local: 
       ) : (
         <>
           <section className="gp-status" aria-live="polite">
-            {status?.carrying && (
-              <b className="person-chip" style={{ "--role": status.colour } as CSSProperties}>
-                {status.carrying}{status.approved ? " ✓" : ""}
+            {status?.card && (
+              <b className="person-chip" style={{ "--role": cardColours[status.card.kind] } as CSSProperties}>
+                {kindNames[status.card.kind]} · {days[status.card.day]}{status.card.worker ? ` · ${status.card.worker}` : ""}{status.card.approved ? " ✓" : ""}
               </b>
             )}
-            <p>{!status ? "Connected" : playing ? (status.stamping ? "Stamping…" : status.prompt) : status.phase === "ready" ? "Ready when you are" : status.phase === "won" ? "Week covered!" : "Understaffed"}</p>
-            {status && <small>{status.filled} / {status.needed} covered · {clock(status.time)} left</small>}
+            <p>{!status ? "Connected" : playing ? (status.stamping ? "Stamping…" : status.prompt) : status.phase === "ready" ? "Ready when you are" : status.phase === "won" ? "Fully rostered!" : "Understaffed"}</p>
+            {status && <small>Roster {status.filled}/{status.needed} · {clock(status.time)} left{playing && <> · <span className={`gp-stage gp-stage--${status.stage}`}>{stageNames[status.stage]}</span></>}</small>}
+            {status?.stamping && <progress className="gp-progress" value={status.stamp} max={1} aria-label="Approval progress" />}
             {status?.news && playing && <small className="gp-news">📞 {status.news}</small>}
           </section>
           {playing ? (
@@ -210,18 +219,25 @@ export default function PhoneController({ code, local }: { code: string; local: 
                 onPointerUp={stickUp} onPointerCancel={stickUp} onLostPointerCapture={stickUp} role="presentation">
                 <span ref={knob} />
               </div>
-              <button type="button" className="gp-action"
-                onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); act(true); }}
-                onPointerUp={() => act(false)} onPointerCancel={() => act(false)} onLostPointerCapture={() => act(false)}>
-                {status?.stamping ? "Hold…" : "Action"}
-              </button>
+              <div className="gp-buttons">
+                <button type="button" className="gp-dash" data-ready={status?.dashReady ?? true}
+                  onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); dashing(true); }}
+                  onPointerUp={() => dashing(false)} onPointerCancel={() => dashing(false)} onLostPointerCapture={() => dashing(false)}>
+                  Dash
+                </button>
+                <button type="button" className="gp-action"
+                  onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); act(true); }}
+                  onPointerUp={() => act(false)} onPointerCancel={() => act(false)} onLostPointerCapture={() => act(false)}>
+                  {status?.stamping ? "Hold…" : "Action"}
+                </button>
+              </div>
             </section>
           ) : (
             <section className="gp-wait">
               <button type="button" className="gp-start" onClick={startRound}>
                 {status?.phase === "ready" || !status ? "Start round" : "Play again"}
               </button>
-              <p>Watch the big screen. Move with the stick, use the action button to grab, sign on, pass and roster.</p>
+              <p>Watch the big screen. Move with the stick. Action grabs, stamps, passes and pins cards. Dash bowls over the Shift Snatcher.</p>
             </section>
           )}
         </>

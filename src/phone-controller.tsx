@@ -15,6 +15,7 @@ function momentBetween(before: Status | null, after: Status): Moment | null {
   if (before.phase === "playing" && after.phase === "won") return { text: "Week covered! 🎉", kind: "win", buzz: [60, 40, 60, 40, 140] };
   if (before.phase === "playing" && after.phase === "lost") return { text: "Time’s up!", kind: "lose", buzz: 300 };
   if (after.phase !== "playing") return null;
+  if ((after.stats?.slips ?? 0) > (before.stats?.slips ?? 0)) return { text: "Whoops! You slipped 🍌", kind: "alert", buzz: [60, 30, 200] };
   if (after.boosted && !before.boosted) return { text: "Boost! ⚡", kind: "good", buzz: [30, 30, 60] };
   if (after.charges > before.charges && before.regenIn > 0.6) return { text: "⚡ +1", kind: "good", buzz: 30 };
   if ((after.stats?.pinned ?? 0) > (before.stats?.pinned ?? 0)) return { text: "Pinned! 📌", kind: "good", buzz: [30, 40, 30] };

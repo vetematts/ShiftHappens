@@ -34,6 +34,7 @@ const awards = [
   { stat: "shredded", title: "Shredder Supreme", unit: ["card shredded", "cards shredded"] },
   { stat: "rescues", title: "Chicken Wrangler", unit: ["rescue", "rescues"] },
   { stat: "accepted", title: "Staff Whisperer", unit: ["shift accepted", "shifts accepted"] },
+  { stat: "slips", title: "Banana Magnet", unit: ["slip", "slips"] },
 ] as const;
 const stickReach = 46;
 
@@ -45,6 +46,7 @@ const tips = [
   "A wobbling card is about to be cancelled.",
   "Grab ⚡ to recharge your dash, or for a speed boost when you’re full.",
   "Dash into the Shift Snatcher to make it drop the cards it stole.",
+  "Employees on a break leak the water cooler and drop banana peels. Walk round them, or you’ll slip and drop your card.",
   "Playing alone? Press Q to swap between the critters.",
   "Roster my team works for cafés, clinics, salons or anything with shifts.",
   "Scan the QR code and your phones become the controllers. Up to four can play.",
@@ -147,7 +149,7 @@ function Stats({ stats }: { stats: View["stats"] }) {
         <thead>
           <tr>
             <th scope="col"><span className="sr-only">Critter</span></th>
-            <th scope="col">Pinned</th><th scope="col">Stamped</th><th scope="col">Shredded</th><th scope="col">Accepted</th><th scope="col">Rescues</th>
+            <th scope="col">Pinned</th><th scope="col">Stamped</th><th scope="col">Shredded</th><th scope="col">Accepted</th><th scope="col">Rescues</th><th scope="col">Slips</th>
           </tr>
         </thead>
         <tbody>
@@ -157,7 +159,7 @@ function Stats({ stats }: { stats: View["stats"] }) {
                 <span className="stats-avatar" aria-hidden="true">{critters[i].emoji}</span>
                 <small>{winners.filter(win => win.winners.includes(i)).map(win => win.title).join(" · ") || "Team player"}</small>
               </th>
-              <td>{entry.pinned}</td><td>{entry.stamped}</td><td>{entry.shredded}</td><td>{entry.accepted}</td><td>{entry.rescues}</td>
+              <td>{entry.pinned}</td><td>{entry.stamped}</td><td>{entry.shredded}</td><td>{entry.accepted}</td><td>{entry.rescues}</td><td>{entry.slips}</td>
             </tr>
           ))}
         </tbody>
@@ -911,6 +913,7 @@ function Game() {
                   <li><span aria-hidden="true">🗑️</span><b>Cancelled</b><small>Pull the red card off the board and feed it to the Shredder. A yellow open shift appears.</small></li>
                   <li><span aria-hidden="true">🟡</span><b>Open shift</b><small>It’s for one employee: their bubble flashes. Chase them down, hand it over, then pin it.</small></li>
                   <li><span aria-hidden="true">🐔</span><b>Shift Snatcher</b><small>The bin chicken nicks pinned cards. Dash into it to make it drop them.</small></li>
+                  <li><span aria-hidden="true">🍌</span><b>Slippery office</b><small>Employees on a break leak the water cooler and drop banana peels. Step in them and you slip and drop your card.</small></li>
                   <li><span aria-hidden="true">⚡</span><b>Dash charges</b><small>Grab ⚡ to recharge your dash, or for a speed boost when you’re full. A wobbling card is about to be cancelled.</small></li>
                 </ol>
                 <table className="how-table">

@@ -5,8 +5,9 @@
  * from a static site such as GitHub Pages with no game server. Add `?link=local` to the host's address to swap in a
  * stand-in that only connects tabs in the same browser, for testing without a network.
  *
- * Guest and venue Wi-Fi often block direct connections. Add `?relay=your-relay.onrender.com` to the host's address
- * (see server/relay.mjs) and everyone talks through that server instead; the join link and QR code carry it along.
+ * Guest and venue Wi-Fi often block direct connections, so by default everyone talks through the team's relay server
+ * (server/relay.mjs) instead. `?relay=other-host` picks another relay and `?relay=off` goes back to direct connections;
+ * the join link and QR code carry either along.
  */
 
 import type { Stats } from "./round";
@@ -70,20 +71,26 @@ export function makeRoomCode() {
   return Array.from({ length: 4 }, () => codeLetters[Math.floor(Math.random() * codeLetters.length)]).join("");
 }
 
+/** The team's relay on Render (server/relay.mjs). Used unless the address says otherwise; `?relay=off` connects directly. */
+const defaultRelay = "shifthappens-c5ij.onrender.com";
+const bareHost = (address: string) => address.trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/\/+$/, "");
+
 /** The address a phone opens to join. A hash survives GitHub Pages and keeps the code out of server logs. */
 export function joinUrl(code: string, local: boolean) {
-  // Phones use the same relay server as the laptop, when the laptop's address names one
+  // Phones use the same relay as the laptop. The default needs nothing in the link, which keeps the QR code simple.
   const relay = new URLSearchParams(location.search).get("relay");
-  const query = relay && !local ? `?relay=${encodeURIComponent(relay)}` : "";
+  const query = relay && !local && bareHost(relay) !== bareHost(defaultRelay) ? `?relay=${encodeURIComponent(relay)}` : "";
   return `${location.origin}${location.pathname}${query}#join-${code}${local ? "-local" : ""}`;
 }
 
 /**
- * The relay server to talk through, if any: `?relay=` in the address, or VITE_RELAY_URL when the site was built.
- * Accepts a bare host (`my-relay.onrender.com`), https:// or wss://.
+ * The relay server to talk through, if any: `?relay=` in the address, else VITE_RELAY_URL from the build, else the
+ * team's relay. `?relay=off` turns it off. Accepts a bare host (`my-relay.onrender.com`), https:// or wss://.
  */
 export function relayUrl() {
-  const given = (new URLSearchParams(location.search).get("relay") || import.meta.env.VITE_RELAY_URL || "").trim();
+  const asked = new URLSearchParams(location.search).get("relay");
+  if (asked?.trim().toLowerCase() === "off") return "";
+  const given = (asked || import.meta.env.VITE_RELAY_URL || defaultRelay).trim();
   if (!given) return "";
   if (/^wss?:\/\//.test(given)) return given;
   if (/^https?:\/\//.test(given)) return given.replace(/^http/, "ws");
@@ -101,6 +108,12 @@ export function readJoin(): { code: string; local: boolean } | null {
 
 /** Whether the host should use the same-browser stand-in instead of the network. */
 export const wantsLocalLink = () => new URLSearchParams(location.search).get("link") === "local";
+
+/** Nudges a sleeping relay awake (a free Render service takes about a minute), so it's ready when phones join. */
+export function wakeRelay() {
+  const relay = relayUrl();
+  if (relay) void fetch(relay.replace(/^ws/, "http"), { mode: "no-cors", cache: "no-store" }).catch(() => {});
+}
 
 export async function openLink(code: string, local: boolean): Promise<Link> {
   if (local) return openLocalLink(code);

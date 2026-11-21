@@ -17,9 +17,9 @@ Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edwa
 | 🟨 **Open shift** | It's for one named employee. Their thought bubble flashes while you carry it: chase them down (they wander the office and slow you down if you brush past) and press action next to them to hand it over, then pin it. No stamp needed. |
 | ⚡ **Dash charges** | Each critter has 3 dash charges and one refills every 9 seconds. Grab a ⚡ off the floor to refill one, or for a 4 second speed boost when you're already full. |
 | 🐦 **Shift Snatcher** | A bin chicken sneaks to the board, steals a card and runs for the exit. Dash into it to make it drop the card, then pin it again. If it escapes, the shift becomes an open shift. |
-| 🍌 **Slippery office** | Employees take breaks. One hurries to the water cooler for a drink and it springs a leak: a puddle spreads next to the Request Tray. Another stops to eat a banana and drops the peel. Walk or dash through either and you slip, fall over and drop your card. Standing still in a puddle is safe, puddles dry up after 22 seconds, and the Snatcher slips on peels too. Breaks come more often as the round speeds up. |
+| 🍌 **Slippery office** | Employees take breaks. One hurries to the water cooler for a drink and it springs a leak: water floods all the way round the Request Tray, so every way in is slippery. Another stops to eat a banana and drops the peel. Walk or dash through either and you slip, fall over and drop your card. Standing still in the water is safe, it dries up after 9 seconds (wait it out, or risk a slip), and the Snatcher slips on peels too. Breaks come more often as the round speeds up. |
 
-The board only takes an approved card, in an empty slot on the card's day. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). The background music speeds up with each stage and again in the last 10 seconds. Fill all 14 slots with no red cards to win. The time left is your score. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever pinned, stamped, passed, shredded and rescued the most, and a Banana Magnet award for whoever slipped the most.
+The board only takes an approved card, in an empty slot on the card's day for that employee's role. Requests and open shifts only come from people who do that role, work that day and have shifts left, so a finished board is a roster the team could really work. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). The background music speeds up with each stage and again in the last 10 seconds. Fill all 14 slots with no red cards to win. The time left is your score. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever pinned, stamped, passed, shredded and rescued the most, and a Banana Magnet award for whoever slipped the most.
 
 | | Move | Action (hold to stamp) | Dash |
 | --- | --- | --- | --- |
@@ -29,7 +29,7 @@ The board only takes an approved card, in an empty slot on the card's day. Round
 
 Playing alone? Press **Q**, or the swap button on a touch screen, to switch critters.
 
-**Testing.** `node scripts/simulate.ts` plays rounds with bots and prints win rates. After `npm run build`, `node scripts/smoke.mjs` plays the build in headless Edge (Windows) or Chrome (Mac, Linux) and saves screenshots to `smoke-out/`. Add `?debug` to the address to get `shiftHappens.round()` in the browser console.
+**Testing.** `node scripts/simulate.ts` plays rounds with bots and prints win rates, plus how many finished rosters break a rule (wrong role, a day off, two shifts in a day or too many shifts). That last number should always be 0. After `npm run build`, `node scripts/smoke.mjs` plays the build in headless Edge (Windows) or Chrome (Mac, Linux) and saves screenshots to `smoke-out/`. Add `?debug` to the address to get `shiftHappens.round()` in the browser console.
 
 ## Quick play or Roster my team
 

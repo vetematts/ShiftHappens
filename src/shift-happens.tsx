@@ -46,7 +46,8 @@ const tips = [
   "A wobbling card is about to be cancelled.",
   "Grab ⚡ to recharge your dash, or for a speed boost when you’re full.",
   "Dash into the Shift Snatcher to make it drop the cards it stole.",
-  "Employees on a break leak the water cooler and drop banana peels. Walk round them, or you’ll slip and drop your card.",
+  "When the water cooler leaks, the tray is flooded for a few seconds. Wait it out, or risk a slip.",
+  "Employees on a break drop banana peels. Walk round them, or you’ll slip and drop your card.",
   "Playing alone? Press Q to swap between the critters.",
   "Roster my team works for cafés, clinics, salons or anything with shifts.",
   "Scan the QR code and your phones become the controllers. Up to four can play.",
@@ -434,6 +435,22 @@ function Game() {
     if (!wantsLocalLink()) wakeRelay();
   }, []);
 
+  /** Esc, the × button or a click on the office around a panel goes back: out of setup, how to play or the phone lobby. */
+  function closeOverlay() {
+    if (round.current.phase === "playing") return;
+    if (setup) setSetup(false);
+    else if (help) setHelp(false);
+    else if (phones && round.current.phase === "ready") setPhones(null);
+  }
+  const onEscape = useEffectEvent(closeOverlay);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) onEscape();
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, []);
+
   function startPhones() {
     sound.current?.unlock();
     setLinkCopied(false);
@@ -750,8 +767,12 @@ function Game() {
   );
 
   const joined = phones ? phones.seats.filter(Boolean).length : 0;
+  const closeButton = (label: string) => (
+    <button type="button" className="panel-close" onClick={closeOverlay} aria-label={`${label} (Esc)`} title={`${label} (Esc)`}>×</button>
+  );
   const joinPanel = phones && (
     <div className="panel panel-join">
+      {closeButton("Back to menu")}
       <div className="join-qr">
         <QrCode text={joinUrl(phones.code, phones.local)} label={`QR code to join room ${phones.code} with a phone`} level="L" margin={3} />
       </div>
@@ -772,9 +793,9 @@ function Game() {
         <BigButton tone="primary" icon="▶" title="Start round"
           note={joined ? `${joined} phone${joined === 1 ? "" : "s"} in · keyboard players welcome too` : "Waiting for phones · keyboards work too"}
           onClick={() => start("quick")} />
-        <div className="phones-actions">
-          <button type="button" className="link" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
-          <button type="button" className="link" onClick={() => setPhones(null)}>Back to menu</button>
+        <div className="join-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
+          <button type="button" className="btn btn-ghost" onClick={() => setPhones(null)}>Back to menu</button>
         </div>
       </div>
     </div>
@@ -904,13 +925,16 @@ function Game() {
         )}
 
         {graphics === "ready" && !playing && !countIn && (
-          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}>
+          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}
+            onClick={event => event.target === event.currentTarget && closeOverlay()}>
             {setup ? (
               <div className="panel panel-wide">
+                {closeButton("Back to menu")}
                 <TeamSetup team={team} onChange={changeTeam} onPlay={() => start("real")} onBack={() => setSetup(false)} />
               </div>
             ) : help ? (
               <div className="panel panel-help">
+                {closeButton("Close how to play")}
                 <p className="kicker">How to play</p>
                 <h2>Move every request through the system and pin the week</h2>
                 <ol className="how">
@@ -918,7 +942,7 @@ function Game() {
                   <li><span aria-hidden="true">🗑️</span><b>Cancelled</b><small>Pull the red card off the board and feed it to the Shredder. A yellow open shift appears.</small></li>
                   <li><span aria-hidden="true">🟡</span><b>Open shift</b><small>It’s for one employee: their bubble flashes. Chase them down, hand it over, then pin it.</small></li>
                   <li><span aria-hidden="true">🐔</span><b>Shift Snatcher</b><small>The bin chicken nicks pinned cards. Dash into it to make it drop them.</small></li>
-                  <li><span aria-hidden="true">🍌</span><b>Slippery office</b><small>Employees on a break leak the water cooler and drop banana peels. Step in them and you slip and drop your card.</small></li>
+                  <li><span aria-hidden="true">🍌</span><b>Slippery office</b><small>The leaking water cooler floods round the tray, and employees drop banana peels. Step in either and you slip and drop your card.</small></li>
                   <li><span aria-hidden="true">⚡</span><b>Dash charges</b><small>Grab ⚡ to recharge your dash, or for a speed boost when you’re full. A wobbling card is about to be cancelled.</small></li>
                 </ol>
                 <table className="how-table">
@@ -941,17 +965,30 @@ function Game() {
               <div className="panel panel-menu">
                 <div className="logo"><span className="brand-tag">Shift</span><span className="brand-word">Happens!</span></div>
                 <p className="tagline">You’re helper critters inside the rostering system. Move every shift request through and pin the whole week before time runs out.</p>
-                <BigButton tone="primary" icon="▶" title="Quick play" note="Sample café · 2 minutes · 2–4 players" onClick={() => start("quick")} />
+                <div className="count" role="group" aria-labelledby="count-label">
+                  <p id="count-label" className="count-label">How many players?</p>
+                  <div className="count-options">
+                    {[2, 3, 4].map(n => (
+                      <button type="button" key={n} aria-pressed={players === n} disabled={n < seatsNeeded(phoneSeats)}
+                        onClick={() => setCount(n)}>
+                        <span className="count-critters" aria-hidden="true">{critters.slice(0, n).map(critter => critter.emoji).join("")}</span>
+                        <b>{n} players</b>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="count-hint">
+                    <span className="count-keys">
+                      {players === 2
+                        ? "The duck and bunny share one keyboard. Want 3 or 4? Pick it here, then add phones."
+                        : `The duck and bunny share the keyboard. The ${players === 3 ? "cat joins" : "cat and frog join"} with ${players === 3 ? "a phone" : "phones"}: tap Phones below.`}
+                    </span>
+                    <span className="count-touch">Everyone else joins on their own phone: tap Phones below and they scan the code.</span>
+                  </p>
+                </div>
+                <BigButton tone="primary" icon="▶" title="Quick play" note={`Sample café · 2 minutes · ${players} players`} onClick={() => start("quick")} />
                 <BigButton tone="roster" icon="📋" title="Roster my team"
                   note={custom && savedKind ? `Continue your ${savedKind.label.toLowerCase()} week · ${team.people.length} people` : "Your staff and shifts in, a real roster out"}
                   onClick={() => setSetup(true)} />
-                <div className="count" role="group" aria-label="Number of players">
-                  <span>Players</span>
-                  {[2, 3, 4].map(n => (
-                    <button type="button" key={n} aria-pressed={players === n} disabled={n < seatsNeeded(phoneSeats)}
-                      onClick={() => setCount(n)}>{critters[n - 1].emoji} {n}</button>
-                  ))}
-                </div>
                 <div className="tiles">
                   <button type="button" className="tile" data-on={Boolean(phones)} onClick={() => (phones ? setPhones(null) : startPhones())}>
                     <span className="tile-icon tile-icon--phones" aria-hidden="true">📱</span><b>Phones</b><small>{phones ? "Turn off" : "as controllers"}</small>

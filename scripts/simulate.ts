@@ -14,6 +14,34 @@ import {
 } from "../src/round.ts";
 
 const dt = 1 / 30;
+
+/**
+ * Rules a finished board breaks for a real roster: someone in a role they don't do, on a day they don't work, twice
+ * in one day, or on more shifts than they want.
+ */
+function rosterProblems(round: Round) {
+  const problems: string[] = [];
+  const booked = new Map<number, number>();
+  const workerIn = (slot: number) => {
+    const id = round.board[slot];
+    const card = id === undefined ? undefined : round.cards[id];
+    return card && card.kind !== "cancelled" ? card.worker : undefined;
+  };
+  round.board.forEach((_, slot) => {
+    const worker = workerIn(slot);
+    if (worker === undefined) return;
+    const person = round.staff[worker];
+    const role = round.slotRoles[slot];
+    if (role && person.role !== role) problems.push(`${person.name} isn't ${role}`);
+    if (!person.days[slot % 7]) problems.push(`${person.name} doesn't work ${days[slot % 7]}`);
+    if (slot < 7 && workerIn(slot + 7) === worker) problems.push(`${person.name} works twice on ${days[slot]}`);
+    booked.set(worker, (booked.get(worker) ?? 0) + 1);
+  });
+  booked.forEach((count, worker) => {
+    if (count > round.staff[worker].shifts) problems.push(`${round.staff[worker].name} has ${count} of ${round.staff[worker].shifts} shifts`);
+  });
+  return problems;
+}
 /** Bot walking speed as a fraction of the real speed. SIM_PACE=0.4 is closer to a human team than the default 1. */
 const pace = Number(process.env.SIM_PACE ?? 1);
 
@@ -123,7 +151,10 @@ function play(players: number, verbose: boolean) {
     console.log("stats", JSON.stringify(round.stats));
   }
   const kinds = round.fx.map(f => f.kind);
+  const problems = rosterProblems(round);
+  if (verbose && problems.length) console.log("roster problems:", problems.join("; "));
   return {
+    broken: problems.length > 0,
     won: round.phase === "won",
     left: settings.duration - round.elapsed,
     filled: filledShifts(round),
@@ -142,6 +173,6 @@ for (const players of [2, 3, 4]) {
   const wins = results.filter(r => r.won);
   const avgLeft = wins.reduce((sum, r) => sum + r.left, 0) / Math.max(1, wins.length);
   const avgFilled = results.reduce((sum, r) => sum + r.filled, 0) / results.length;
-  console.log(`${players}p: won ${wins.length}/${count} · avg time left on win ${avgLeft.toFixed(1)}s · avg filled ${avgFilled.toFixed(1)} · cancels seen in ${results.filter(r => r.sawCancel).length} · avg cancels ${(results.reduce((sum, r) => sum + r.cancels, 0) / results.length).toFixed(1)} · avg escapes ${(results.reduce((sum, r) => sum + r.escapes, 0) / results.length).toFixed(1)}`);
+  console.log(`${players}p: won ${wins.length}/${count} · avg time left on win ${avgLeft.toFixed(1)}s · avg filled ${avgFilled.toFixed(1)} · cancels seen in ${results.filter(r => r.sawCancel).length} · avg cancels ${(results.reduce((sum, r) => sum + r.cancels, 0) / results.length).toFixed(1)} · avg escapes ${(results.reduce((sum, r) => sum + r.escapes, 0) / results.length).toFixed(1)} · rosters breaking a rule ${results.filter(r => r.broken).length}`);
   if (verbose) break;
 }

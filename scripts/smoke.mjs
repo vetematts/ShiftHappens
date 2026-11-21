@@ -111,7 +111,7 @@ await shot("1-menu");
 console.log("menu text:", await text());
 
 const clicked = await evaluate(`(() => {
-  const button = [...document.querySelectorAll("button")].find(b => /quick play/i.test(b.innerText));
+  const button = [...document.querySelectorAll("button")].find(b => /quick play|dental clinic/i.test(b.innerText));
   if (!button) return false;
   button.click();
   return true;

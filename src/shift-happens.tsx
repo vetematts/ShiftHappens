@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type
 import { createOfficeWorld } from "./office-world";
 import {
   beginRound, cardIn, dash, days, dropCarried, ensurePlayers, filledShifts, heldCard, interact, neededShifts, newRound, nextAction, roleIn, roster,
-  quickTeam, sampleTeam, settings, shifts, stageAt, stepRound, stopStamp, templates, walk,
+  quickTeam, sampleTeam, settings, shifts, stageAt, stepRound, stopStamp, walk,
   type Round, type Stage, type Team,
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
@@ -50,7 +50,7 @@ const tips = [
   "When the water cooler leaks, the tray is flooded for a few seconds. Wait it out, or risk a slip.",
   "Playing alone? Press Q to swap between the critters.",
   "Need a breather? Press Esc to pause.",
-  "Roster my team works for cafés, clinics, salons or anything with shifts.",
+  "Roster my team plays a café, dental clinic or hair salon week and gives you a real roster.",
   "Scan the QR code and your phones become the controllers. Up to four can play.",
 ];
 
@@ -709,9 +709,10 @@ function Game() {
 
   /**
    * Sets up a round and starts it. Starting from the menu or the join screen shows the rules first (`brief`);
-   * Play again, or straight after reading How to play, goes straight to the 3-2-1.
+   * Play again, or straight after reading How to play, goes straight to the 3-2-1. `chosen` is the team for a "real"
+   * round; picking a business passes it in directly because the saved `team` state hasn't updated yet.
    */
-  function start(mode: "quick" | "real" = lastMode.current, brief = round.current.phase === "ready") {
+  function start(mode: "quick" | "real" = lastMode.current, brief = round.current.phase === "ready", chosen: Team = team) {
     if (countdownUntil.current || briefUntil.current) return;
     lastMode.current = mode;
     paused.current = false;
@@ -729,10 +730,10 @@ function Game() {
     const total = Math.max(count, seatsNeeded(seats.current));
     const state = mode === "real"
       ? newRound({
-        ...team,
-        roles: team.roles.map((role, i) => ({ ...role, label: role.label.trim() || `Role ${i + 1}` })),
-        shiftNames: [team.shiftNames[0].trim() || "AM", team.shiftNames[1].trim() || "PM"],
-        people: team.people.filter(person => person.name.trim()).map(person => ({ ...person, name: person.name.trim() })),
+        ...chosen,
+        roles: chosen.roles.map((role, i) => ({ ...role, label: role.label.trim() || `Role ${i + 1}` })),
+        shiftNames: [chosen.shiftNames[0].trim() || "AM", chosen.shiftNames[1].trim() || "PM"],
+        people: chosen.people.filter(person => person.name.trim()).map(person => ({ ...person, name: person.name.trim() })),
       }, true, total)
       : newRound(quickTeam, false, total);
     round.current = state;
@@ -839,8 +840,6 @@ function Game() {
   const panelCount = playing ? view.players.length : players;
   const swapTo = swapTarget(lead, panelCount, keyedP2, phoneSeats);
   const banner = playing && view.stage !== "calm" && view.elapsed - stageStart[view.stage] < 2.6 ? view.stage : null;
-  const savedKind = templates.find(template => template.id === team.kind);
-  const custom = team.kind !== "cafe" || team.people.length !== sampleTeam.people.length;
   const endAwards = view.phase === "won" || view.phase === "lost" ? awardWinners(view.stats) : [];
   const progress = view.needed ? view.filled / view.needed : 0;
 
@@ -1026,7 +1025,7 @@ function Game() {
             {setup ? (
               <div className="panel panel-wide">
                 {closeButton("Back to menu")}
-                <TeamSetup team={team} onChange={changeTeam} onPlay={() => start("real")} onBack={() => setSetup(false)} />
+                <TeamSetup team={team} onChange={changeTeam} onPlay={chosen => start("real", undefined, chosen)} onBack={() => setSetup(false)} />
               </div>
             ) : help ? (
               <div className="panel panel-help">
@@ -1081,9 +1080,8 @@ function Game() {
                     <span className="count-touch">Everyone else joins on their own phone: tap Phones below and they scan the code.</span>
                   </p>
                 </div>
-                <BigButton tone="primary" icon="▶" title="Quick play" note={`Dental clinic roster · 2 minutes · ${players} players`} onClick={() => start("quick")} />
-                <BigButton tone="roster" icon="📋" title="Roster my team"
-                  note={custom && savedKind ? `Continue your ${savedKind.label.toLowerCase()} week · ${team.people.length} people` : "Your staff and shifts in, a real roster out"}
+                <BigButton tone="primary" icon="▶" title="Play" note={`Dental clinic roster · 2 minutes · ${players} players`} onClick={() => start("quick")} />
+                <BigButton tone="roster" icon="📋" title="Roster my team" note="Pick a business, play its week, get a real roster"
                   onClick={() => setSetup(true)} />
                 <div className="tiles">
                   <button type="button" className="tile" data-on={Boolean(phones)} onClick={() => (phones ? setPhones(null) : startPhones())}>
@@ -1129,7 +1127,7 @@ function Game() {
                 <RosterTable view={view} />
                 <div className="actions">
                   <button type="button" className="btn btn-soft" onClick={copyRoster}>{copied ? "Copied ✓" : "Copy roster"}</button>
-                  {view.custom && <button type="button" className="btn btn-soft" onClick={() => setSetup(true)}>Edit team</button>}
+                  {view.custom && <button type="button" className="btn btn-soft" onClick={() => setSetup(true)}>Change business</button>}
                   <button type="button" className="btn btn-ghost" onClick={backToMenu}>Menu</button>
                   <button type="button" className="btn btn-primary" onClick={() => start()}>Play again</button>
                 </div>

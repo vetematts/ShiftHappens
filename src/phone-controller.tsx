@@ -11,6 +11,20 @@ const stickReach = 56;
 
 type Status = Extract<HostMessage, { t: "status" }>;
 
+type Moment = { text: string; kind: "good" | "alert" | "win" | "lose"; buzz: number | number[] };
+
+/** Something worth a flash and a buzz on this phone, found by comparing two status updates from the laptop. */
+function momentBetween(before: Status | null, after: Status): Moment | null {
+  if (!before) return null;
+  if (before.phase === "playing" && after.phase === "won") return { text: "Week covered! 🎉", kind: "win", buzz: [60, 40, 60, 40, 140] };
+  if (before.phase === "playing" && after.phase === "lost") return { text: "Time’s up!", kind: "lose", buzz: 300 };
+  if (after.phase !== "playing") return null;
+  if ((after.stats?.rostered ?? 0) > (before.stats?.rostered ?? 0)) return { text: "Rostered! 📌", kind: "good", buzz: [30, 40, 30] };
+  if ((after.stats?.signed ?? 0) > (before.stats?.signed ?? 0)) return { text: "Signed on ✓", kind: "good", buzz: 40 };
+  if (after.news && after.news !== before.news && after.news.includes("called in sick")) return { text: "Sick call! 📞", kind: "alert", buzz: [120, 60, 120] };
+  return null;
+}
+
 function clock(seconds: number) {
   const whole = Math.max(0, Math.ceil(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
@@ -25,6 +39,8 @@ export default function PhoneController({ code, local }: { code: string; local: 
   const [connection, setConnection] = useState<"connecting" | "connected" | "lost">("connecting");
   const [seat, setSeat] = useState<number | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
+  const previous = useRef<Status | null>(null);
+  const [flash, setFlash] = useState<(Moment & { id: number }) | null>(null);
 
   useEffect(() => {
     let closed = false;
@@ -50,7 +66,13 @@ export default function PhoneController({ code, local }: { code: string; local: 
           setSeat(message.player);
           setConnection("connected");
         } else if (message.t === "status" && from === host.current) {
+          const moment = momentBetween(previous.current, message);
+          previous.current = message;
           setStatus(message);
+          if (moment) {
+            setFlash({ ...moment, id: performance.now() });
+            if (navigator.vibrate) navigator.vibrate(moment.buzz);
+          }
         }
       });
       // Send the stick about 20 times a second when it moves, and a heartbeat otherwise
@@ -71,6 +93,17 @@ export default function PhoneController({ code, local }: { code: string; local: 
       link.current?.close();
     };
   }, [code, local]);
+
+  // Each flash fades on its own; this tidies it away afterwards
+  useEffect(() => {
+    if (!flash) return;
+    const timer = window.setTimeout(() => setFlash(null), 1400);
+    return () => window.clearTimeout(timer);
+  }, [flash]);
+
+  function startRound() {
+    link.current?.send({ t: "start" }, host.current ?? undefined);
+  }
 
   function sendNow() {
     if (!host.current || !link.current) return;
@@ -115,6 +148,7 @@ export default function PhoneController({ code, local }: { code: string; local: 
 
   const critter = seat !== null && seat >= 0 ? critters[seat] : null;
   const playing = status?.phase === "playing";
+  const countdown = status?.countdown ?? 0;
 
   return (
     <main className="gp" onContextMenu={event => event.preventDefault()} style={{ "--gp": critter?.colour ?? "#efe7ff" } as CSSProperties}>
@@ -135,6 +169,27 @@ export default function PhoneController({ code, local }: { code: string; local: 
         <section className="gp-wait">
           <h1>All four critters are taken</h1>
           <p>Four phones are already playing. Keep this open and you’ll jump in as soon as one leaves.</p>
+        </section>
+      ) : countdown > 0 ? (
+        <section className="gp-count" aria-live="assertive">
+          <span key={countdown}>{countdown}</span>
+          <p>Get ready! Watch the big screen.</p>
+        </section>
+      ) : status && (status.phase === "won" || status.phase === "lost") ? (
+        <section className="gp-results" aria-live="polite">
+          <h1>{status.phase === "won" ? "Week covered!" : "Understaffed"}</h1>
+          <small>{status.filled} / {status.needed} covered</small>
+          {status.awards?.length ? status.awards.map(title => (
+            <p className="gp-award" key={title}><span aria-hidden="true">🏆</span> You’re the <b>{title}</b></p>
+          )) : <p className="gp-award gp-award--none">No award this round. Steal one next time!</p>}
+          {status.stats && (
+            <dl className="gp-stats">
+              <div><dt>Rostered</dt><dd>{status.stats.rostered}</dd></div>
+              <div><dt>Signed on</dt><dd>{status.stats.signed}</dd></div>
+              <div><dt>Passed</dt><dd>{status.stats.passed}</dd></div>
+            </dl>
+          )}
+          <button type="button" className="gp-start" onClick={startRound}>Play again</button>
         </section>
       ) : (
         <>
@@ -163,7 +218,7 @@ export default function PhoneController({ code, local }: { code: string; local: 
             </section>
           ) : (
             <section className="gp-wait">
-              <button type="button" className="gp-start" onClick={() => link.current?.send({ t: "start" }, host.current ?? undefined)}>
+              <button type="button" className="gp-start" onClick={startRound}>
                 {status?.phase === "ready" || !status ? "Start round" : "Play again"}
               </button>
               <p>Watch the big screen. Move with the stick, use the action button to grab, sign on, pass and roster.</p>
@@ -171,6 +226,7 @@ export default function PhoneController({ code, local }: { code: string; local: 
           )}
         </>
       )}
+      {flash && <div className="gp-flash" data-kind={flash.kind} key={flash.id} role="status">{flash.text}</div>}
     </main>
   );
 }

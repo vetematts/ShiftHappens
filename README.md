@@ -45,7 +45,8 @@ Like a Jackbox party game, the laptop or projector shows the game and phones bec
 1. Open the game on the laptop and select the **Phones** tile on the menu.
 2. A QR code and a four-letter room code appear. Scan the QR code with a phone camera, or select **Copy join link** to send the link instead.
 3. Phones become the duck, the bunny, the cat and the frog, in the order they join. The menu ticks off each one as it connects. The cat and the frog walk into the office as soon as a third or fourth phone joins, even mid-round.
-4. Select **Start round** on a phone, or start from the laptop. Each phone shows a thumb stick, an action button, what its critter is holding and what the action button will do next.
+4. Select **Start round** on a phone, or start from the laptop. A 3-2-1-Go countdown plays on the big screen and every phone, so everyone starts together. Each phone shows a thumb stick, an action button, what its critter is holding and what the action button will do next.
+5. Phones flash, and buzz on Android, when their critter signs someone on or rosters a shift, and when a sick call comes in. When the round ends, each phone shows that player's awards and tallies, with a **Play again** button.
 
 A fifth phone waits and takes over a critter as soon as a phone leaves. If a phone leaves mid-round, its critter puts down whoever it was carrying so nobody gets stuck. The keyboard keeps driving the duck and the bunny, so keyboard and phone players can mix.
 

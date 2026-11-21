@@ -11,7 +11,7 @@
  * pause after each action stands in for how long people take to look, decide and fumble.
  */
 import {
-  beginRound, canWork, columnX, filledShifts, furniture, interact, neededShifts, newRound, office, settings, shifts,
+  beginRound, canWork, columnX, filledShifts, furniture, interact, neededShifts, newRound, office, roleIn, settings, shiftLabel,
   stepRound, walk, type Point, type Round,
 } from "../src/round.ts";
 
@@ -83,13 +83,13 @@ function bunny(round: Round) {
     if (pad >= 0 && goTo(round, 1, behindPad(pad))) act(round, 1);
     return;
   }
-  const slot = shifts.findIndex((_, i) => canWork(round, person, i));
+  const slot = round.slots.findIndex((_, i) => canWork(round, person, i));
   if (slot < 0) {
     // Nowhere they can go any more: put them down and they head home
     act(round, 1);
     return;
   }
-  if (goTo(round, 1, boardStand(slot % 7))) act(round, 1);
+  if (goTo(round, 1, boardStand(round.slots[slot].shift % 7))) act(round, 1);
 }
 
 function play() {
@@ -118,15 +118,15 @@ for (let i = 0; i < rounds; i++) {
   const round = play();
   if (round.phase === "won") {
     wins++;
-    spare += settings.duration - round.elapsed;
+    spare += round.duration - round.elapsed;
   }
   covered.push(filledShifts(round) / neededShifts(round));
   shooed += round.players.reduce((sum, player) => sum + player.stats.shooed, 0);
   if (show) {
     console.log(`\n${round.phase === "won" ? "Won" : "Lost"} with ${filledShifts(round)}/${neededShifts(round)} covered`);
-    for (const [i, slot] of shifts.entries()) {
+    for (const [i, slot] of round.slots.entries()) {
       const id = round.board[i];
-      console.log(`  ${slot.label.padEnd(7)} ${round.week[i] ?? "closed"}: ${id === undefined ? "open" : round.staff[id].name}`);
+      console.log(`  ${shiftLabel(round.shiftNames, slot.shift).padEnd(7)} ${roleIn(round.roles, slot.role).label}: ${id === undefined ? "open" : round.staff[id].name}`);
     }
     console.log("  Stats:", round.players.map((player, n) => `${n ? "bunny" : "duck"} ${JSON.stringify(player.stats)}`).join(", "));
   }

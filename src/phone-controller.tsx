@@ -4,6 +4,8 @@ import { openLink, type HostMessage, type Link } from "./phone-link";
 const critters = [
   { name: "duck", emoji: "🐥", colour: "#ffd54f" },
   { name: "bunny", emoji: "🐰", colour: "#cdb8ff" },
+  { name: "cat", emoji: "🐱", colour: "#9fd0ff" },
+  { name: "frog", emoji: "🐸", colour: "#9be58a" },
 ];
 const stickReach = 56;
 
@@ -115,14 +117,14 @@ export default function PhoneController({ code, local }: { code: string; local: 
   const playing = status?.phase === "playing";
 
   return (
-    <main className="pad" style={{ "--pad": critter?.colour ?? "#efe7ff" } as CSSProperties}>
-      <header className="pad-head">
+    <main className="gp" onContextMenu={event => event.preventDefault()} style={{ "--gp": critter?.colour ?? "#efe7ff" } as CSSProperties}>
+      <header className="gp-head">
         <strong>{critter ? `${critter.emoji} You’re the ${critter.name}` : "Shift Happens!"}</strong>
         <span>Room {code}</span>
       </header>
 
       {connection !== "connected" || seat === null ? (
-        <section className="pad-wait">
+        <section className="gp-wait">
           {connection === "lost" ? (
             <><h1>Lost the laptop</h1><p>Check you’re on the same Wi-Fi as the laptop, then reload this page.</p></>
           ) : (
@@ -130,38 +132,38 @@ export default function PhoneController({ code, local }: { code: string; local: 
           )}
         </section>
       ) : seat < 0 ? (
-        <section className="pad-wait">
-          <h1>Both critters are taken</h1>
-          <p>Two phones are already playing. Keep this open and you’ll jump in as soon as one leaves.</p>
+        <section className="gp-wait">
+          <h1>All four critters are taken</h1>
+          <p>Four phones are already playing. Keep this open and you’ll jump in as soon as one leaves.</p>
         </section>
       ) : (
         <>
-          <section className="pad-status" aria-live="polite">
+          <section className="gp-status" aria-live="polite">
             {status?.carrying && (
-              <b className="shifts-person" style={{ "--role": status.colour } as CSSProperties}>
+              <b className="person-chip" style={{ "--role": status.colour } as CSSProperties}>
                 {status.carrying}{status.approved ? " ✓" : ""}
               </b>
             )}
             <p>{!status ? "Connected" : playing ? (status.stamping ? "Stamping…" : status.prompt) : status.phase === "ready" ? "Ready when you are" : status.phase === "won" ? "Week covered!" : "Understaffed"}</p>
             {status && <small>{status.filled} / {status.needed} covered · {clock(status.time)} left</small>}
-            {status?.news && playing && <small className="pad-news">📞 {status.news}</small>}
+            {status?.news && playing && <small className="gp-news">📞 {status.news}</small>}
           </section>
           {playing ? (
-            <section className="pad-controls">
-              <div className="shifts-stick pad-stick" onPointerDown={stickDown}
+            <section className="gp-controls">
+              <div className="touch-stick gp-stick" onPointerDown={stickDown}
                 onPointerMove={event => event.pointerId === input.current.pointer && moveStick(event.clientX, event.clientY)}
                 onPointerUp={stickUp} onPointerCancel={stickUp} onLostPointerCapture={stickUp} role="presentation">
                 <span ref={knob} />
               </div>
-              <button type="button" className="pad-action"
+              <button type="button" className="gp-action"
                 onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); act(true); }}
                 onPointerUp={() => act(false)} onPointerCancel={() => act(false)} onLostPointerCapture={() => act(false)}>
                 {status?.stamping ? "Hold…" : "Action"}
               </button>
             </section>
           ) : (
-            <section className="pad-wait">
-              <button type="button" className="pad-start" onClick={() => link.current?.send({ t: "start" }, host.current ?? undefined)}>
+            <section className="gp-wait">
+              <button type="button" className="gp-start" onClick={() => link.current?.send({ t: "start" }, host.current ?? undefined)}>
                 {status?.phase === "ready" || !status ? "Start round" : "Play again"}
               </button>
               <p>Watch the big screen. Move with the stick, use the action button to grab, sign on, pass and roster.</p>

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Shift Happens: a two-player co-op browser game ("Overcooked, but for rostering") built with React 19, Vite and Three.js, and no backend. A finished round produces a real weekly roster. It deploys as a static site to GitHub Pages.
+Shift Happens: a 2–4 player co-op browser game ("Overcooked, but for rostering") built with React 19, Vite and Three.js, and no backend. A finished round produces a real weekly roster. It deploys as a static site to GitHub Pages.
 
 ## Commands
 
@@ -40,13 +40,13 @@ React only re-renders the HUD through a throttled `snapshot(state)` (about every
 
 **Routing.** `ShiftHappens` (default export) checks the URL hash. `#join-CODE[-local]` renders `PhoneController` (the phone gamepad). Anything else renders the game.
 
-**Phones as controllers.** `src/phone-link.ts` wraps Trystero (Nostr relays for discovery, then direct WebRTC) behind a small `Link` interface, with a same-browser stand-in for `?link=local`. Messages are typed as `PhoneMessage` (phone → host: `input`, `start`) and `HostMessage` (host → phone: `seat`, `status`). The laptop is authoritative and runs the whole game. Phones send input about 20 times a second, and the host broadcasts each seated phone's status every 200 ms. The first two phones take seats 0 (duck) and 1 (bunny). Extra phones wait for a free seat. Relays are contacted only after the user opts into phone mode.
+**Phones as controllers.** `src/phone-link.ts` wraps Trystero (Nostr relays for discovery, then direct WebRTC) behind a small `Link` interface, with a same-browser stand-in for `?link=local`. Messages are typed as `PhoneMessage` (phone → host: `input`, `start`) and `HostMessage` (host → phone: `seat`, `status`). The laptop is authoritative and runs the whole game. Phones send input about 20 times a second, and the host broadcasts each seated phone's status every 200 ms. Phones take seats in order, up to `maxPlayers` (4). `ensurePlayers` adds critters mid-round as phones join, so code that keeps per-player state (such as `track()` in `office-world.ts`) must handle `round.players` growing. Relays are contacted only after the user opts into phone mode.
 
-**Teams.** "Quick play" uses `sampleTeam` in `round.ts`. "Run it for real" (`src/team-setup.tsx`) edits a `Team` saved to localStorage, and `checkTeam` warns about shifts that nobody can cover. The week has 14 slots: indices 0–6 are Mon–Sun AM and 7–13 are Mon–Sun PM, so the day of a slot is `slot % 7`.
+**Teams.** "Quick play" uses `sampleTeam` in `round.ts`. "Roster my team" (`src/team-setup.tsx`) starts from one of the `templates` and edits a `Team` (custom `roles`, `shiftNames`, `perDay`, and `needs` per shift), and `checkTeam` warns about gaps. The week has 14 *shifts*: indices 0–6 are Mon–Sun first shift and 7–13 the second, so the day is `shift % 7`. The board is a list of *slots* (`round.slots`, from `slotsOf`), one per role needed on each shift, so `round.board[i]` belongs to `round.slots[i]`. Don't index `shifts` by slot. Use `shiftLabel(round.shiftNames, slot.shift)` for labels. `round.duration` grows with the number of slots, so use it instead of `settings.duration`.
 
 **Events and sound.** `round.ts` never plays sounds. `office-world.ts` `track()` compares the round with the previous frame (board slots, staff locations, `player.refused`, `round.snatcher` mode, stage from `stageAt`) and fires popups and `Sound` cues. It also drives the music tempo with `sound.setMusic()`. To add a sound for a new rule, expose the change as state in `Round` and detect it in `track()`.
 
-**Pacing and the Shift Snatcher.** `settings.pace` lists the Calm, Busy and Chaos stages and sets the spawn, sick-call and bin-chicken intervals for each. The bin chicken (`round.snatcher`, `stepSnatcher`) moves only along `snatchLane` in front of the board. Staff it grabs have `at.place === "snatched"`.
+**Pacing and the Shift Snatcher.** `settings.pace` lists the Calm, Busy and Chaos stages and sets the spawn, sick-call and bin-chicken intervals for each. Each stage's `from` is a fraction of `round.duration`, and so is `settings.snatcher.firstAt`. `stageAt(round)` gives the current stage. The bin chicken (`round.snatcher`, `stepSnatcher`) moves only along `snatchLane` in front of the board. Staff it grabs have `at.place === "snatched"`.
 
 **Other modules.** `sound.ts` synthesises sound effects and the music loop with Web Audio (no audio files). `play-qr.tsx` renders QR codes with `qrcode-generator`.
 

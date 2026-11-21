@@ -255,6 +255,10 @@ export const settings = {
   slipSlide: 5,
   slipGrace: 1.3,
   maxPlayers: 4,
+  /** Seconds a news message stays up before a queued one can replace it, so each can be read. */
+  newsMinimum: 3,
+  /** Seconds a queued news message may wait before it's too stale to show. */
+  newsStale: 6,
 };
 
 /** Board columns, one per day, centred on the office. */
@@ -496,8 +500,12 @@ export type Round = {
   stats: Stats[];
   fx: Fx[];
   fxSeq: number;
-  /** Latest office news for the interface, such as a cancellation. */
-  news: { text: string; until: number };
+  /** The office news showing now, such as a cancellation: shown from `since` until `until`. */
+  news: { text: string; since: number; until: number };
+  /** News waiting its turn while another message is still being read. Urgent messages go to the front. */
+  newsQueue: { text: string; seconds: number; urgent: boolean; staleAt: number }[];
+  /** Cancellation excuses still to use this round, as indexes into `excuses`, so none repeats until all are used. */
+  excuseDeck: number[];
   custom: boolean;
 };
 
@@ -688,7 +696,9 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     stats: Array.from({ length: count }, noStats),
     fx: [],
     fxSeq: 0,
-    news: { text: "", until: 0 },
+    news: { text: "", since: 0, until: 0 },
+    newsQueue: [],
+    excuseDeck: shuffle(excuses.map((_, i) => i)),
     custom,
   };
 }
@@ -707,8 +717,72 @@ function notify(round: Round, player: Player, message: string) {
   player.messageUntil = round.elapsed + 2.2;
 }
 
-function announce(round: Round, text: string) {
-  round.news = { text, until: round.elapsed + 4 };
+/**
+ * Shows a news message, or queues it while the current one is still being read. Urgent messages (the Snatcher)
+ * jump the queue, so they wait at most `settings.newsMinimum` seconds.
+ */
+function announce(round: Round, text: string, seconds = 4, urgent = false) {
+  const item = { text, seconds, urgent, staleAt: round.elapsed + settings.newsStale };
+  if (urgent) {
+    // A newer urgent message replaces an older one still waiting, such as "loose" followed by "grabbed"
+    round.newsQueue = [item, ...round.newsQueue.filter(waiting => !waiting.urgent)];
+  } else {
+    round.newsQueue.push(item);
+  }
+  showNextNews(round);
+}
+
+// Moves the next queued message onto the banner once the current one has had its minimum time (or ended).
+function showNextNews(round: Round) {
+  round.newsQueue = round.newsQueue.filter(item => item.staleAt > round.elapsed);
+  const { since, until } = round.news;
+  const reading = until > round.elapsed && round.elapsed - since < Math.min(settings.newsMinimum, until - since);
+  if (reading || !round.newsQueue.length) return;
+  const next = round.newsQueue.shift()!;
+  round.news = { text: next.text, since: round.elapsed, until: round.elapsed + next.seconds };
+}
+
+/**
+ * Why people cancel. Each follows "Sam can't make Mon AM: …". Keep them kind and family friendly, and use
+ * "they/their" so they fit anyone on any team.
+ */
+export const excuses = [
+  "their goldfish died and the funeral is at noon.",
+  "their goldfish needs emotional support.",
+  "they got their head stuck in the fence. Again.",
+  "the cat is asleep on their car keys and won't budge.",
+  "they're stuck in a lift with a mime.",
+  "they accidentally glued themselves to the couch.",
+  "their nan challenged them to a dance-off.",
+  "a seagull stole their uniform.",
+  "their smart fridge has locked them out of the house.",
+  "their pet rock is feeling unwell.",
+  "they ate servo sushi last night.",
+  "their phone autocorrected \"yes\" to \"never\".",
+  "they're on hold with the bank. Day three.",
+  "the neighbour's peacock has them trapped indoors.",
+  "they won a lifetime supply of cheese and have to guard it.",
+  "they lost a bet and their eyebrows are gone.",
+  "they dreamt they already worked the shift.",
+  "their horoscope said \"absolutely not\".",
+  "it's their hamster's graduation.",
+  "a magpie has declared war on them.",
+  "they fell asleep on the bus and woke up in another town.",
+  "their sourdough starter is having a crisis.",
+  "a parcel is arriving \"between 7am and 7pm\".",
+  "the toddler hid the car keys in the toaster.",
+  "the dog ate the roster. And the car keys.",
+  "they were crowned bingo champion and have official duties.",
+  "nan needs the Wi-Fi fixed. Again.",
+  "a bin chicken stole their lunch and they're going after it.",
+  "their twin is pretending to be them, badly.",
+  "they're too deep into a jigsaw puzzle to stop now.",
+];
+
+/** The next excuse from this round's shuffled deck, starting a fresh shuffle once they've all been used. */
+function nextExcuse(round: Round) {
+  if (!round.excuseDeck.length) round.excuseDeck = shuffle(excuses.map((_, i) => i));
+  return excuses[round.excuseDeck.pop()!];
 }
 
 function makeCard(round: Round, kind: CardKind, day: number, at: CardPlace, worker?: number): Card {
@@ -1049,7 +1123,8 @@ function stepDoomed(round: Round) {
     card.kind = "cancelled";
     card.approved = false;
     const who = card.worker === undefined ? "Someone" : round.staff[card.worker].name;
-    announce(round, `${who} cancelled ${shifts[slot].label}! Pull the red card and shred it.`);
+    // A little longer on screen than other news, so there's time to enjoy the excuse
+    announce(round, `${who} can't make ${shifts[slot].label}: ${nextExcuse(round)} Shred the red card!`, 6);
     fx(round, "cancel", slotFloor(slot), { card: card.id });
   });
 }
@@ -1063,7 +1138,7 @@ function spawnSnatcher(round: Round) {
     kind: "snatcher", id: 100 + round.fxSeq, point: { ...office.exit }, facing: -Math.PI / 2,
     state: "sneak", target, dazedUntil: 0,
   });
-  announce(round, "The Shift Snatcher is loose! Dash into it (Shift) to save the shift.");
+  announce(round, "The Shift Snatcher is loose! Dash into it (Shift) to save the shift.", 4, true);
 }
 
 function stepToward(point: Point, goal: Point, distance: number) {
@@ -1145,7 +1220,7 @@ function stepSnatcher(round: Round, seconds: number) {
       card.doomedAt = undefined;
       chicken.card = card.id;
       chicken.state = "flee";
-      announce(round, `The Snatcher grabbed ${shifts[chicken.target].label}! Dash into it!`);
+      announce(round, `The Snatcher grabbed ${shifts[chicken.target].label}! Dash into it!`, 4, true);
       fx(round, "snatch", goal, { card: card.id });
     }
     return;
@@ -1204,6 +1279,7 @@ export function stepRound(round: Round, seconds: number) {
     announce(round, stage === "busy" ? "Busy! Cancellations and the Snatcher are coming." : "Chaos! Everything speeds up.");
   }
 
+  showNextNews(round);
   // Queued open shifts take free tray seats before new requests do.
   placeOpenShifts(round);
   if (round.elapsed >= round.nextSpawn) {

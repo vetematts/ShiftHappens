@@ -1,6 +1,6 @@
-/* Shift Happens! look: a live office behind glossy, rounded glass panels */
+/* Shift Happens! look: a live office behind solid, flat-coloured panels (see "Flat finish" at the end) */
 :root {
-  --font: "Fredoka Variable", ui-rounded, "SF Pro Rounded", Nunito, system-ui, sans-serif;
+  --font: "Bricolage Grotesque Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --ink: #2a2140;
   --cream: #fff8ef;
   --muted: #c9bfe6;
@@ -9,10 +9,10 @@
   --mint: #3fcfae;
   --violet: #8f7bff;
   --red: #ff5a76;
-  --glass: linear-gradient(180deg, rgb(62 46 118 / .88), rgb(34 25 68 / .92));
-  --glass-thin: rgb(30 22 60 / .62);
-  --edge: rgb(255 255 255 / .14);
-  --lift: inset 0 1px 0 rgb(255 255 255 / .2), 0 1.2rem 3rem rgb(12 6 32 / .45);
+  --glass: #33276a;
+  --glass-thin: rgb(44 32 92 / .92);
+  --edge: rgb(255 255 255 / .12);
+  --lift: 0 .6rem 1.6rem rgb(20 10 50 / .3);
   --spring: cubic-bezier(.2, 1.4, .4, 1);
 }
 
@@ -453,6 +453,9 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 .brief-board { display: grid; grid-template-columns: repeat(7, 1fr); gap: .24em; width: 7.8em; padding: .5em; border-radius: .6em; background: #d9a066; box-shadow: inset 0 0 0 .22em #a86e3c, 0 .3em 0 rgb(0 0 0 / .2); }
 .brief-board span { position: relative; aspect-ratio: 1 / 1.25; border: .1em dashed rgb(110 60 20 / .55); border-radius: .2em; animation: brief-pin .35s var(--spring) both; animation-delay: calc(.6s + var(--n) * .32s); }
 .brief-board span::after { content: ""; position: absolute; top: -.15em; left: 50%; width: .35em; height: .35em; border-radius: 50%; background: #f0595f; opacity: 0; transform: translateX(-50%); animation: inherit; animation-name: brief-pin-dot; }
+/* Shifts the week doesn't need (a closed weekend, say) stay greyed out and never fill */
+.brief-board span[data-closed] { border: 0; background: rgb(90 50 20 / .28); animation: none; }
+.brief-board span[data-closed]::after { content: none; }
 .brief-goal { margin: 0; padding: .2em .8em; border-radius: 1em; background: rgb(255 255 255 / .1); border: 2px solid var(--edge); font-size: min(3.6vw, 5.2vh); font-weight: 600; line-height: 1.2; }
 .brief-goal b { color: var(--sun); font-weight: 700; }
 .brief-watch { display: flex; flex-wrap: wrap; justify-content: center; gap: min(2.4vw, 1.6rem); margin: 0; padding: 0; list-style: none; }
@@ -495,7 +498,7 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 @media (prefers-reduced-motion: reduce) {
   .awards li, .countdown span, .gp-count span, .gp-award { animation: none; }
   .brief, .brief-title em, .brief-card, .brief-card i, .brief-stamp, .brief-board span, .brief-board span::after { animation: none; }
-  .brief-board span { border-color: transparent; background: var(--sun); }
+  .brief-board span:not([data-closed]) { border-color: transparent; background: var(--sun); }
   .brief-board span::after { opacity: 1; }
   .gp-flash { animation: none; transform: translateX(-50%); }
   .panel, .toast, .toast span, .ticker span, .splash-logo, .stat-time.is-urgent, .stat-stage, .banner, .sh--urgent .stage::after, .splash-bar span { animation: none; }
@@ -565,3 +568,30 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 }
 .panel-wide .setup-head { padding-right: 4rem; }
 .panel-help > .kicker, .panel-help > h2 { padding-right: 2.6rem; }
+
+/* Flat finish: the same colours as solid fills, with no frosted glass, glossy gradients or icon boxes, and tighter
+   corners. Buttons keep a short solid edge so they still feel pressable. */
+.brand, .stat, .icon-btn, .pad-card, .touch-stick, .panel,
+.screen--help, .screen--end, .screen--setup, .screen--pause, .screen--join { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.screen--help, .screen--end, .screen--setup, .screen--pause, .screen--join { background: rgb(29 22 56 / .55); }
+.panel { border-radius: .9rem; }
+.stat, .icon-btn, .pad-card, .brand, .big { border-radius: .7rem; }
+.count, .count button, .tile, .share, .btn, .link { border-radius: .55rem; }
+.brand-tag { background: var(--pink); box-shadow: none; }
+.brand-word { text-shadow: none; }
+.big-primary, .btn-primary { background: #ff5f9e; box-shadow: 0 .22rem 0 #c23a74; }
+.big-roster { background: #2fbf9f; box-shadow: 0 .22rem 0 #1d8a72; }
+.big:active:not(:disabled).big-primary, .big:active:not(:disabled).big-roster { box-shadow: none; }
+.big-icon { background: rgb(255 255 255 / .2); box-shadow: none; }
+.big-primary .big-icon { color: #fff; }
+.big-text b { text-shadow: none; }
+.btn-soft { background: var(--cream); box-shadow: 0 .2rem 0 #b9a6e8; }
+.count button[aria-pressed=true] { box-shadow: none; }
+.tile-icon { width: auto; height: 2rem; background: none !important; box-shadow: none; }
+.setup-icon { background: rgb(255 255 255 / .1); box-shadow: none; }
+.stat-bar span, .splash-bar span { background: var(--sun); }
+.stat-time.is-urgent, .stat-stage[data-stage=chaos] { background: #e5405f; }
+.stat-stage[data-stage=busy] { background: var(--sun); }
+.end-won { background: none; -webkit-background-clip: border-box; background-clip: border-box; color: var(--sun) !important; }
+.toast { background: #ff5f8f; box-shadow: 0 .25rem 0 #c23a64; }
+.ticker { background: rgb(29 22 56 / .85); }

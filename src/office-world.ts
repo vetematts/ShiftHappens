@@ -225,7 +225,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   renderer.toneMapping = T.NeutralToneMapping;
   renderer.toneMappingExposure = 1.04;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = touch ? T.PCFShadowMap : T.PCFSoftShadowMap;
+  // Three.js dropped PCFSoftShadowMap (it fell back to this with a console warning), so use PCF everywhere
+  renderer.shadowMap.type = T.PCFShadowMap;
   renderer.domElement.setAttribute("aria-label", "3D office with a request tray, manager’s desk, pass counter, shredder and roster board");
   renderer.domElement.setAttribute("role", "img");
   host.appendChild(renderer.domElement);
@@ -876,20 +877,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     const brim = parts.add(head, new T.Mesh(cylinderGeometry, hat), 0, .15, .2, .2, .025, .15);
     crown.castShadow = brim.castShadow = true;
     const feet = [-1, 1].map(side => ball(body, 0x7a6a8c, side * .14, .06, .08, .1, .055, .14));
-    // What they hold on a break: a cup of water, or a banana
+    // The cup of water they drink on a break
     const cup = new T.Group();
     cup.position.set(.24, .58, .28);
     body.add(cup);
     cylinder(cup, colours.white, 0, 0, 0, .08, .18);
     cylinder(cup, 0x8fd6ff, 0, .085, 0, .066, .014);
     cup.visible = false;
-    const banana = new T.Group();
-    banana.position.set(.26, .62, .26);
-    banana.rotation.z = .55;
-    body.add(banana);
-    parts.capsule(banana, 0xffd84d, 0, 0, 0, .065, .13, .065);
-    ball(banana, 0x6b4a2b, 0, .21, 0, .026, .032, .026);
-    banana.visible = false;
     const tagSurface = new T.SpriteMaterial({ depthTest: false, depthWrite: false });
     ownMaterials.push(tagSurface);
     const tag = new T.Sprite(tagSurface);
@@ -913,7 +907,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     root.add(beam);
     root.visible = false;
     scene.add(root);
-    return { root, body, head, tag, ring, beam, feet, cup, banana, skin, hat, key: "", bubble: "", born: -10, popped: -10, facing: 0, phase: 0 };
+    return { root, body, head, tag, ring, beam, feet, cup, skin, hat, key: "", bubble: "", born: -10, popped: -10, facing: 0, phase: 0 };
   }
   const crew = new Map<number, ReturnType<typeof makeCrew>>();
   const bubbleTextures = new Map<string, T.Texture>();
@@ -1209,7 +1203,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   // Floating words
   const words = {
     leak: sign("Leak!", "#8fd6ff"),
-    peel: sign("Banana!", "#ffe066"),
     slip: sign("Whoops!", "#ffb3c2"),
     stamp: sign("Stamped!", "#5fe39a"),
     pin: sign("Rostered!", "#ffd35c"),
@@ -1501,7 +1494,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(confetti, at, 12, { colours: [0x5fe39a, 0xffffff, 0xffd35c], speed: 1.8, up: 3, gravity: 8, life: .9, size: .8 });
         popup("stamp", office.desk.x + .3, 3.0, office.desk.z, .95);
         if (mine) mine.popped = now;
-        shake = Math.max(shake, .08);
         break;
       }
       case "pin": {
@@ -1511,7 +1503,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(confetti, { x: spot.x, y: spot.y, z: boardZ + .3 }, 26, { colours: confettiColours, speed: 2.4, up: 3.2, gravity: 7, life: 1.2, size: 1 });
         popup("pin", spot.x, 1.0, office.boardZ + .9, .9);
         if (mine) mine.popped = now;
-        shake = Math.max(shake, .12);
         break;
       }
       case "nope":
@@ -1525,7 +1516,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(puffs, { x: spot.x, y: spot.y, z: boardZ + .3 }, 10, { colours: [0xff6b6b, 0xfff6e6], speed: 1.3, up: .8, gravity: 0, life: .7, size: .9 });
         popup("cancel", spot.x, 1.0, office.boardZ + .9, 1);
         ringUntil = now + 1.6;
-        shake = Math.max(shake, .1);
         break;
       }
       case "shred":
@@ -1552,12 +1542,12 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         break;
       }
       case "snatch":
-        shake = Math.max(shake, .26);
+        shake = Math.max(shake, .18);
         popup("snatch", x, 1.0, Math.max(z, office.boardZ + .9), 1.15);
         emit(puffs, { x, y: 1, z }, 8, { colours: [0xfffdf8, 0xff8fb0], speed: 1.4, up: .8, gravity: 0, life: .6, size: .9 });
         break;
       case "knock":
-        shake = Math.max(shake, .2);
+        shake = Math.max(shake, .12);
         squash(event.player, 6);
         emit(confetti, { x, y: 1.6, z }, 12, { colours: starColours, speed: 1.9, up: 3.2, gravity: 6, life: 1, size: .9 });
         break;
@@ -1598,14 +1588,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       case "leak":
         popup("leak", furniture.cooler.x + .7, 2.5, furniture.cooler.z, .9);
         emit(puffs, { x: furniture.cooler.x + .3, y: .5, z: furniture.cooler.z - .2 }, 10, { colours: [0x8fd6ff, 0xffffff], speed: 1.2, up: .6, gravity: 0, life: .7, size: .9 });
-        shake = Math.max(shake, .06);
-        break;
-      case "peel":
-        popup("peel", x, 2.1, z, .75);
-        emit(puffs, { x, y: .3, z }, 6, { colours: [0xffe066, 0xfff6e6], speed: .8, up: .5, gravity: 0, life: .5, size: .8 });
         break;
       case "slip":
-        shake = Math.max(shake, .16);
         squash(event.player, -6);
         popup("slip", x, 2.6, z, .9);
         emit(confetti, { x, y: 1.3, z }, 10, { colours: starColours, speed: 1.6, up: 2.6, gravity: 6, life: .9, size: .8 });
@@ -1614,7 +1598,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       case "busy":
         break;
       case "chaos":
-        shake = Math.max(shake, .15);
+        shake = Math.max(shake, .12);
         break;
       case "win":
         for (let i = 0; i < 7; i++) {
@@ -1796,15 +1780,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       member.body.position.y = still ? 0 : walking ? Math.abs(Math.sin(step)) * .09 : Math.max(0, Math.sin(now * 2.4 + npc.id * 2)) * .05;
       member.body.rotation.z = walking && !still ? Math.sin(step) * .12 : 0;
       member.head.rotation.z = still ? 0 : Math.sin(now * 2 + npc.id) * .06;
-      const errand = npc.errand;
-      const busy = errand?.stage === "busy" && round.phase === "playing";
-      member.head.rotation.x = busy && !still ? (errand.kind === "water" ? -.35 + Math.sin(now * 3) * .05 : Math.sin(now * 12) * .12) : 0;
-      member.cup.visible = errand?.kind === "water" && errand.stage === "busy";
-      member.banana.visible = errand?.kind === "banana";
-      if (member.banana.visible) {
-        const left = Math.max(.25, (errand!.until - round.elapsed) / settings.snackTime);
-        member.banana.scale.set(1, left, 1);
-      }
+      // Drinking at the cooler tips the head back
+      const drinking = npc.errand?.stage === "busy" && round.phase === "playing";
+      member.head.rotation.x = drinking && !still ? -.35 + Math.sin(now * 3) * .05 : 0;
+      member.cup.visible = npc.errand?.stage === "busy";
       member.feet.forEach((foot, side) => {
         const swing = walking ? Math.sin(step + side * Math.PI) : 0;
         foot.position.z = .08 + swing * .12;
@@ -1954,53 +1933,97 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     });
   }
 
-  // Puddles and banana peels on the floor (the floor tiles' tops are at y .04, the rug's at .08)
-  const puddleSurface = new T.MeshStandardMaterial({ color: 0x5cb8ff, roughness: .05, metalness: .05, transparent: true, opacity: .82, depthWrite: false });
-  const puddleRim = new T.MeshBasicMaterial({ color: 0x3a8fe0, transparent: true, opacity: .55, depthWrite: false, toneMapped: false });
-  const puddleShine = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .6, depthWrite: false, toneMapped: false });
+  // The cooler's flood round the Request Tray. The water doesn't write depth and is
+  // layered by render order (rim, then water, then glints), so it always sits on the floor and under anything on it.
+  const puddleSurface = new T.MeshStandardMaterial({ color: 0x5cb8ff, roughness: .05, metalness: .05, depthWrite: false });
+  const puddleRim = new T.MeshBasicMaterial({ color: 0x3a8fe0, depthWrite: false, toneMapped: false });
+  const puddleShine = new T.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, toneMapped: false });
   ownMaterials.push(puddleSurface, puddleRim, puddleShine);
-  function flatDisc(parent: T.Object3D, surface: T.Material, x: number, z: number, size: number, y = .1) {
-    const disc = new T.Mesh(parts.circle, surface);
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.set(x, y, z);
-    disc.scale.setScalar(size);
-    disc.renderOrder = 1;
-    parent.add(disc);
-    return disc;
+  const layer = new Map<T.Material, number>([[puddleRim, 1], [puddleSurface, 2], [puddleShine, 3]]);
+  function flat(parent: T.Object3D, geometry: T.BufferGeometry, surface: T.Material) {
+    const mesh = new T.Mesh(geometry, surface);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = .1;
+    mesh.renderOrder = layer.get(surface) ?? 1;
+    parent.add(mesh);
+    return mesh;
   }
-  function makePuddle() {
-    const group = new T.Group();
-    // A blobby shape from overlapping discs, with a darker rim and a couple of glints
-    const shape = [[0, 0, .95], [.5, .28, .6], [-.52, .26, .55], [.22, -.5, .52], [-.36, -.42, .48]] as const;
-    shape.forEach(([x, z, size]) => flatDisc(group, puddleRim, x, z, size + .07, .095));
-    const lobes = shape.map(([x, z, size]) => flatDisc(group, puddleSurface, x, z, size));
-    flatDisc(group, puddleShine, -.22, -.18, .14, .105);
-    flatDisc(group, puddleShine, .32, .12, .08, .105);
-    scene.add(group);
-    return { group, lobes };
-  }
-  function makePeel() {
-    const group = new T.Group();
-    for (let i = 0; i < 3; i++) {
-      const flap = new T.Group();
-      flap.rotation.y = i * 2.1 + .3;
-      group.add(flap);
-      const piece = parts.capsule(flap, 0xffd84d, 0, .05, .2, .075, .12, .035);
-      piece.rotation.x = Math.PI / 2;
-      ball(flap, 0x8a6a2b, 0, .06, .36, .03, .025, .03);
+  // A rounded rectangle reaching `reach` out from every edge of the tray, cached in small steps as it grows and dries
+  const floodShapes = new Map<number, T.ShapeGeometry>();
+  function floodShape(reach: number) {
+    const key = Math.max(1, Math.round(reach * 25));
+    let geometry = floodShapes.get(key);
+    if (!geometry) {
+      const r = key / 25;
+      const a = furniture.inbox.w / 2;
+      const b = furniture.inbox.d / 2;
+      const outline = new T.Shape();
+      outline.moveTo(-a, -b - r);
+      outline.lineTo(a, -b - r);
+      outline.absarc(a, -b, r, -Math.PI / 2, 0, false);
+      outline.lineTo(a + r, b);
+      outline.absarc(a, b, r, 0, Math.PI / 2, false);
+      outline.lineTo(-a, b + r);
+      outline.absarc(-a, b, r, Math.PI / 2, Math.PI, false);
+      outline.lineTo(-a - r, -b);
+      outline.absarc(-a, -b, r, Math.PI, Math.PI * 1.5, false);
+      geometry = new T.ShapeGeometry(outline, 8);
+      geometries.push(geometry);
+      floodShapes.set(key, geometry);
     }
-    ball(group, 0xffe58a, 0, .1, 0, .13, .08, .13);
-    ball(group, 0x6b4a2b, 0, .17, 0, .03, .045, .03);
-    scene.add(group);
-    return group;
+    return geometry;
   }
-  // A trickle of water from the cooler to its puddle
+  // Bumps along the flood's edge so it looks spilled rather than drawn: a spot on the tray's edge and which way is out
+  const floodBumps = (() => {
+    const a = furniture.inbox.w / 2;
+    const b = furniture.inbox.d / 2;
+    const corner = Math.SQRT1_2;
+    return [
+      [-1.1, -b, 0, -1], [.1, -b, 0, -1], [1.2, -b, 0, -1], [-.6, b, 0, 1], [.9, b, 0, 1], [-a, .1, -1, 0], [a, -.2, 1, 0],
+      [-a, -b, -corner, -corner], [a, -b, corner, -corner], [-a, b, -corner, corner], [a, b, corner, corner],
+    ] as const;
+  })();
+  function makeFlood() {
+    const group = new T.Group();
+    const rim = flat(group, floodShape(1), puddleRim);
+    const water = flat(group, floodShape(1), puddleSurface);
+    const bumps = floodBumps.map(() => ({ rim: flat(group, parts.circle, puddleRim), water: flat(group, parts.circle, puddleSurface) }));
+    const glints = [[-1.1, -1], [.9, -1], [-1.9, .3]].map(() => flat(group, parts.circle, puddleShine));
+    scene.add(group);
+    return { group, rim, water, bumps, glints };
+  }
+  function placeFlood(flood: ReturnType<typeof makeFlood>, reach: number, now: number, still: boolean) {
+    flood.group.visible = reach > .02;
+    if (!flood.group.visible) return;
+    flood.rim.geometry = floodShape(reach + .08);
+    flood.water.geometry = floodShape(reach);
+    floodBumps.forEach(([x, z, nx, nz], i) => {
+      const out = reach * .62;
+      const size = reach * (.4 + (i % 3) * .04) * (still ? 1 : 1 + Math.sin(now * 2.2 + i * 1.7) * .04);
+      const bump = flood.bumps[i];
+      bump.water.position.set(x + nx * out, .1, z + nz * out);
+      bump.rim.position.set(x + nx * out, .1, z + nz * out);
+      bump.water.scale.setScalar(size);
+      bump.rim.scale.setScalar(size + .08);
+    });
+    // Glints on the water along the front and back of the tray
+    const a = furniture.inbox.w / 2;
+    const b = furniture.inbox.d / 2;
+    const spots = [[-1.1, -b - reach * .55], [.9, -b - reach * .5], [-a - reach * .5, .3]];
+    flood.glints.forEach((glint, i) => {
+      glint.position.set(spots[i][0], .1, spots[i][1]);
+      glint.scale.set(reach * .16, reach * .05, 1);
+      glint.rotation.z = i === 2 ? Math.PI / 2 : 0;
+    });
+  }
+  // A stream of water from the cooler into the flood
   const trickle = new T.Group();
   scene.add(trickle);
-  flatDisc(trickle, puddleSurface, 0, 0, 1, .098);
+  flat(trickle, parts.circle, puddleSurface);
   trickle.visible = false;
-  type HazardObject = { group: T.Group; lobes: T.Mesh[]; born: number };
-  const hazardObjects = new Map<number, HazardObject>();
+  const streamFrom = { x: furniture.cooler.x + .25, z: furniture.cooler.z - .25 };
+  const streamTo = { x: furniture.inbox.x - furniture.inbox.w / 2, z: furniture.inbox.z + furniture.inbox.d / 2 };
+  const hazardObjects = new Map<number, ReturnType<typeof makeFlood>>();
   let dripAt = 0;
 
   function placeHazards(round: Round, now: number) {
@@ -2009,41 +2032,31 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     let puddle: Hazard | undefined;
     for (const hazard of round.hazards) {
       present.add(hazard.id);
-      let entry = hazardObjects.get(hazard.id);
-      if (!entry) {
-        entry = hazard.kind === "puddle" ? { ...makePuddle(), born: now } : { group: makePeel(), lobes: [], born: now };
-        hazardObjects.set(hazard.id, entry);
+      let flood = hazardObjects.get(hazard.id);
+      if (!flood) {
+        flood = makeFlood();
+        hazardObjects.set(hazard.id, flood);
       }
-      entry.group.position.set(hazard.point.x, 0, hazard.point.z);
-      if (hazard.kind === "puddle") {
-        puddle = hazard;
-        // Grow and shrink across the floor only, so it never sinks into the tiles
-        const radius = Math.max(.001, hazardRadius(round, hazard));
-        entry.group.scale.set(radius, 1, radius);
-        entry.lobes.forEach((lobe, i) => lobe.scale.setScalar((i ? .55 : .95) * (still ? 1 : 1 + Math.sin(now * 2.2 + i * 1.7) * .03)));
-      } else {
-        const pop = Math.min(1, (now - entry.born) / .35);
-        entry.group.scale.setScalar(1.6 * Math.max(.001, easeBack(pop)));
-      }
+      flood.group.position.set(hazard.point.x, 0, hazard.point.z);
+      puddle = hazard;
+      placeFlood(flood, hazardRadius(round, hazard), now, still);
     }
     for (const [id, entry] of hazardObjects) {
       if (present.has(id)) continue;
       scene.remove(entry.group);
       hazardObjects.delete(id);
     }
-    // The trickle runs from the cooler to the puddle while it's there; the cooler drips and wobbles while it spreads
-    trickle.visible = Boolean(puddle);
+    // The stream runs from the cooler while the flood is there; the cooler drips and wobbles while it spreads
+    const flow = puddle ? hazardRadius(round, puddle) / settings.spillReach : 0;
+    trickle.visible = flow > .02;
     let leaking = false;
     if (puddle) {
-      const from = { x: furniture.cooler.x + .2, z: furniture.cooler.z - .25 };
-      const dx = puddle.point.x - from.x;
-      const dz = puddle.point.z - from.z;
-      const length = Math.hypot(dx, dz);
-      const width = Math.max(.001, hazardRadius(round, puddle) / settings.puddleRadius) * .22;
-      trickle.position.set((from.x + puddle.point.x) / 2, 0, (from.z + puddle.point.z) / 2);
+      const dx = streamTo.x - streamFrom.x;
+      const dz = streamTo.z - streamFrom.z;
+      trickle.position.set((streamFrom.x + streamTo.x) / 2, 0, (streamFrom.z + streamTo.z) / 2);
       trickle.rotation.y = Math.atan2(dx, dz);
-      trickle.scale.set(width, 1, length / 2);
-      leaking = round.elapsed - puddle.born < settings.puddleGrow + 3;
+      trickle.scale.set(Math.max(.001, flow) * .3, 1, Math.hypot(dx, dz) / 2);
+      leaking = round.elapsed - puddle.born < settings.puddleGrow + 2;
       if (leaking && !still && now > dripAt) {
         dripAt = now + .12;
         emit(puffs, { x: furniture.cooler.x + .3, y: .35, z: furniture.cooler.z - .15 }, 1, { colours: [0x8fd6ff, 0xbfe8ff], speed: .3, up: .1, gravity: 0, life: .5, size: .6 });
@@ -2235,9 +2248,11 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     pan += (follow - pan) * (1 - Math.exp(-dt * 4));
     camera.position.copy(basePosition);
     camera.position.x += pan;
+    // Only big moments (the Snatcher, knocking it, Chaos) shake the room, and as a short smooth wobble rather than
+    // random jitter, so busy rounds with lots of stamping and slipping don't make the whole picture jump about
     if (shake > 0 && !still) {
-      camera.position.x += (Math.random() - .5) * shake;
-      camera.position.y += (Math.random() - .5) * shake;
+      camera.position.x += Math.sin(now * 38) * shake * .5;
+      camera.position.y += Math.cos(now * 31) * shake * .35;
     }
     shake = Math.max(0, shake - dt * .9);
     render();

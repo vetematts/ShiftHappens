@@ -5,7 +5,7 @@
  * the helpers move those request cards through the system: the Request Tray (inbox), the Manager's Desk
  * (approval stamp), across the counter, onto the Roster Board. Cancellations, open shifts that need cover
  * from the wandering employee they are for, and a card-stealing Shift Snatcher keep un-filling the week.
- * Employees on a break make the floor slippery too: a leaking water cooler and dropped banana peels.
+ * Employees on a break make the floor slippery too: the water cooler leaks all round the tray.
  *
  * Everything the UI and the 3D office need lives in `Round`. One-off moments (a pin, a "nope", a snatch)
  * are pushed onto `round.fx` so the renderer and sound can react without diffing state.
@@ -237,22 +237,24 @@ export const settings = {
   staffBody: .38,
   crowdReach: 1.15,
   crowdSpeed: .65,
-  /** Breaks: one employee at a time pops to the water cooler (which leaks) or eats a banana (and drops the peel). */
+  /** Breaks: one employee at a time pops to the water cooler for a drink, and it leaks. */
   firstErrand: 14,
-  /** Seconds between one break ending and the next starting. */
-  errandEvery: { calm: 9, busy: 6, chaos: 3.5 } as Record<Stage, number>,
+  /** Seconds between one break ending and the next starting (about five leaks a round). */
+  errandEvery: { calm: 20, busy: 15, chaos: 10 } as Record<Stage, number>,
   /** Employees hurry to the cooler, this many times their strolling speed. */
   errandPace: 1.8,
   /** A walk to the cooler that takes longer than this is abandoned. */
   errandGiveUp: 22,
   drinkTime: 2.2,
-  snackTime: 2.4,
-  /** The cooler's puddle: full size, seconds to spread, seconds before it dries up. */
-  puddleRadius: 1.3,
-  puddleGrow: 3,
-  puddleLasts: 22,
-  peelLasts: 35,
-  peelRadius: .45,
+  /**
+   * The cooler's flood rings the whole Request Tray, so any way in is slippery. `spillReach` is how far it spreads
+   * past the tray's edges (players use the tray from up to `stationReach` away). It spreads in `puddleGrow` seconds,
+   * lasts `puddleLasts` in all, and shrinks back to the tray over its last `puddleDry` seconds.
+   */
+  spillReach: 1.35,
+  puddleGrow: 1.5,
+  puddleLasts: 9,
+  puddleDry: 2,
   /** A slip: seconds on the floor, how fast you slide, and seconds after getting up before you can slip again. */
   slipTime: 1.15,
   slipSlide: 5,
@@ -295,8 +297,6 @@ export const office = {
   /** Where an employee stands to drink from the water cooler, and the open floor they walk via to get round the tray. */
   coolerSpot: { x: -10.55, z: 5.6 },
   coolerWay: { x: -10.6, z: 1.5 },
-  /** Where the leaking cooler's puddle spreads: on the open floor beside the Request Tray. */
-  puddle: { x: -9.1, z: 2.75 },
 };
 
 /** A solid piece of furniture: centre plus full width (x) and depth (z). */
@@ -450,11 +450,11 @@ export type Player = {
 /** A ⚡ lying on the floor. Walk over it to pick it up. */
 export type Bolt = { id: number; point: Point; born: number };
 
-/** An employee's break. While `going`, `until` is when they give up on the walk; while `busy`, when they finish. */
-export type Errand = { kind: "water" | "banana"; stage: "going" | "busy"; until: number };
+/** An employee's trip to the water cooler. While `going`, `until` is when they give up on the walk; while `busy` (drinking), when they finish. */
+export type Errand = { stage: "going" | "busy"; until: number };
 
-/** Something slippery on the floor. A puddle spreads and dries up; a peel stays until someone slips on it. */
-export type Hazard = { id: number; kind: "puddle" | "peel"; point: Point; born: number; until: number };
+/** Something slippery on the floor: the cooler's flood round the Request Tray, which spreads and dries up. */
+export type Hazard = { id: number; kind: "puddle"; point: Point; born: number; until: number };
 
 /** What each critter did this round, for the awards on the end screen and the phones. */
 export type Stats = { pinned: number; stamped: number; passed: number; shredded: number; accepted: number; rescues: number; slips: number };
@@ -463,7 +463,7 @@ const noStats = (): Stats => ({ pinned: 0, stamped: 0, passed: 0, shredded: 0, a
 export type FxKind =
   | "spawn" | "pick" | "put" | "stamp" | "pin" | "nope" | "cancel" | "shred" | "open" | "accept"
   | "snatch" | "knock" | "rescue" | "escape" | "dash" | "busy" | "chaos" | "win" | "lose"
-  | "warn" | "bolt" | "charge" | "boost" | "leak" | "peel" | "slip";
+  | "warn" | "bolt" | "charge" | "boost" | "leak" | "slip";
 
 /** A one-off moment for the renderer and sound. `id` only ever increases within a round. */
 export type Fx = { id: number; kind: FxKind; x: number; z: number; player?: number; card?: number };
@@ -590,17 +590,27 @@ const freeSeat = (round: Round) => {
 /** Slots on this day the week needs that nobody (not even a cancelled card) is in. */
 const emptySlots = (round: Round, day: number) => [day, day + 7].filter(slot => round.needed[slot] && round.board[slot] === undefined);
 
+/** The role of the employee on a card, if it has one. */
+const workerRole = (round: Round, card: Card) => (card.worker === undefined ? undefined : round.staff[card.worker]?.role);
+
 /**
- * How many more cards this day needs. Every empty slot needs one card; every card already heading for this day
- * (requests and open shifts off the board, cancelled cards that will become open shifts, cards the Snatcher holds,
- * queued open shifts) is already on its way.
+ * The roles this day still needs a card for. Every empty slot needs one card of its role; every card already heading
+ * for this day (requests and open shifts off the board, cancelled cards that will become open shifts, cards the
+ * Snatcher holds) covers its worker's role, and queued open shifts cover whichever role is left.
  */
-function shortfall(round: Round, day: number) {
-  const empty = emptySlots(round, day).length;
-  const incoming = round.cards.filter(card => live(card) && card.day === day && card.at.place !== "board").length
-    + round.openQueue.filter(queued => queued === day).length;
-  return empty - incoming;
+function rolesWanted(round: Round, day: number) {
+  const wanted = emptySlots(round, day).map(slot => round.slotRoles[slot] ?? "");
+  const cover = (role?: string) => {
+    const index = role === undefined ? -1 : wanted.indexOf(role);
+    wanted.splice(index === -1 ? wanted.length - 1 : index, 1);
+  };
+  round.cards.filter(card => live(card) && card.day === day && card.at.place !== "board").forEach(card => cover(workerRole(round, card)));
+  round.openQueue.filter(queued => queued === day).forEach(() => cover());
+  return wanted;
 }
+
+/** How many more cards this day needs. */
+const shortfall = (round: Round, day: number) => rolesWanted(round, day).length;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Setup
@@ -794,13 +804,36 @@ function makeCard(round: Round, kind: CardKind, day: number, at: CardPlace, work
   return card;
 }
 
-/** Pick an employee to send a request for this day: someone who works that day and isn't already on it. */
+/**
+ * Who could take a shift on this day in this role: they do that role, work that day, aren't already on that day and
+ * have shifts left. That keeps the finished board a roster the team could really work. If nobody fits (the team
+ * setup warns about this), the rules relax one at a time so the round can still finish.
+ */
+function fitting(round: Round, day: number, role?: string) {
+  const active = round.cards.filter(card => live(card) && card.kind !== "cancelled" && card.worker !== undefined);
+  const busy = new Set(active.filter(card => card.day === day).map(card => card.worker));
+  const booked = (id: number) => active.filter(card => card.worker === id).length;
+  const doesRole = (person: Staff) => role === undefined || role === "" || person.role === role;
+  const tests = [
+    (person: Staff) => doesRole(person) && person.days[day] && !busy.has(person.id) && booked(person.id) < person.shifts,
+    (person: Staff) => doesRole(person) && person.days[day] && !busy.has(person.id),
+    (person: Staff) => doesRole(person) && person.days[day],
+    (person: Staff) => doesRole(person),
+    () => true,
+  ];
+  for (const test of tests) {
+    const pool = round.staff.filter(test);
+    if (pool.length) return pool;
+  }
+  return round.staff;
+}
+
+const pick = <T,>(list: T[]) => list[Math.floor(Math.random() * list.length)];
+
+/** Pick an employee to send a request for this day, in a role the day still needs. */
 function requester(round: Round, day: number) {
-  const busy = new Set(round.cards.filter(card => live(card) && card.day === day && card.worker !== undefined)
-    .map(card => card.worker));
-  const keen = round.staff.filter(person => person.days[day] && !busy.has(person.id));
-  const pool = keen.length ? keen : round.staff;
-  return pool[Math.floor(Math.random() * pool.length)].id;
+  const role = pick(rolesWanted(round, day));
+  return pick(fitting(round, day, role)).id;
 }
 
 /** A new Shift Request lands on the tray, for a day that still needs cover. */
@@ -820,7 +853,7 @@ function placeOpenShifts(round: Round) {
     const seat = freeSeat(round);
     if (seat === undefined) return;
     const day = round.openQueue.shift()!;
-    const card = makeCard(round, "open", day, { place: "tray", seat }, coverFor(round));
+    const card = makeCard(round, "open", day, { place: "tray", seat }, coverFor(round, day));
     fx(round, "open", traySpot(seat), { card: card.id });
   }
 }
@@ -830,14 +863,23 @@ const wanderers = (round: Round) => round.npcs.filter((npc): npc is Wanderer => 
 const nameOf = (round: Round, person: number | undefined) =>
   (person === undefined ? undefined : round.staff[person]?.name) ?? "them";
 
-/** Which wandering employee a new open shift is for: preferably someone no other open shift is waiting on. */
-function coverFor(round: Round) {
-  const people = wanderers(round).map(npc => npc.person);
-  if (!people.length) return undefined;
+/**
+ * Which wandering employee a new open shift is for: someone who could really take it (see `fitting`), preferably
+ * with no other open shift waiting on them. If none of the wanderers fits, one of them who isn't wanted becomes
+ * someone from the team who does.
+ */
+function coverFor(round: Round, day: number) {
+  const npcs = wanderers(round);
+  if (!npcs.length) return undefined;
   const waiting = new Set(round.cards.filter(card => live(card) && card.kind === "open" && !card.approved).map(card => card.worker));
-  const free = people.filter(person => !waiting.has(person));
-  const pool = free.length ? free : people;
-  return pool[Math.floor(Math.random() * pool.length)];
+  const able = new Set(fitting(round, day, pick(rolesWanted(round, day))).map(person => person.id));
+  const free = npcs.filter(npc => !waiting.has(npc.person));
+  const ready = free.filter(npc => able.has(npc.person));
+  if (ready.length) return pick(ready).person;
+  const swap = pick(free.length ? free : npcs);
+  const outside = [...able].filter(id => !npcs.some(npc => npc.person === id));
+  if (outside.length) swap.person = pick(outside);
+  return swap.person;
 }
 
 /** Employees walk from one end of the office to the other, rarely stopping, and step round furniture and players. */
@@ -946,28 +988,22 @@ function sidestep(npc: Wanderer, free: (next: Point) => boolean): Point | undefi
   return undefined;
 }
 
-/** One employee at a time takes a break: the one nearest the cooler goes for a drink, or someone eats a banana. */
+/** One employee at a time takes a break: whoever is nearest the water cooler goes for a drink. */
 function startBreak(round: Round) {
   const people = wanderers(round);
-  if (!people.length || people.some(npc => npc.errand)) return false;
-  const wet = round.hazards.some(hazard => hazard.kind === "puddle");
+  // Not while someone's already on a break, or while the last flood is still drying
+  if (!people.length || people.some(npc => npc.errand) || round.hazards.length) return false;
   round.breaks++;
-  if (!wet && round.breaks % 2 === 1) {
-    const reach = (npc: Wanderer) => pathLength(npc.point, coolerPath(npc.point));
-    const npc = people.reduce((best, next) => (reach(next) < reach(best) ? next : best));
-    npc.errand = { kind: "water", stage: "going", until: round.elapsed + settings.errandGiveUp };
-    npc.path = coolerPath(npc.point);
-    npc.waitUntil = 0;
-    npc.stuck = 0;
-    return true;
-  }
-  // A banana: they stop where they are, eat it, and leave the peel behind
-  const npc = people[Math.floor(Math.random() * people.length)];
-  npc.errand = { kind: "banana", stage: "busy", until: round.elapsed + settings.snackTime };
+  const reach = (npc: Wanderer) => pathLength(npc.point, coolerPath(npc.point));
+  const npc = people.reduce((best, next) => (reach(next) < reach(best) ? next : best));
+  npc.errand = { stage: "going", until: round.elapsed + settings.errandGiveUp };
+  npc.path = coolerPath(npc.point);
+  npc.waitUntil = 0;
+  npc.stuck = 0;
   return true;
 }
 
-/** Moves an employee's break along. Returns true while they are stood still drinking or eating. */
+/** Moves an employee's break along. Returns true while they are stood at the cooler drinking. */
 function stepBreak(round: Round, npc: Wanderer) {
   const errand = npc.errand;
   if (!errand) return false;
@@ -977,54 +1013,50 @@ function stepBreak(round: Round, npc: Wanderer) {
     return false;
   }
   if (round.elapsed < errand.until) return true;
-  if (errand.kind === "water") leak(round);
-  else dropPeel(round, npc);
+  leak(round);
   finishBreak(round, npc);
   return true;
 }
 
 function finishBreak(round: Round, npc: Wanderer) {
   // From the cooler, back out the way they came so the tray doesn't box them into the corner
-  const out = npc.errand?.kind === "water" && npc.errand.stage === "busy" ? office.coolerWay : undefined;
+  const out = npc.errand?.stage === "busy" ? office.coolerWay : undefined;
   npc.errand = undefined;
   npc.path = out ? [{ ...out }, ...routeTo(out, farSpot(out))] : routeTo(npc.point, farSpot(npc.point));
   npc.stuck = 0;
   round.nextErrand = round.elapsed + settings.errandEvery[round.stage];
 }
 
-/** The cooler springs a leak: a puddle spreads on the floor beside the Request Tray. */
+/** The cooler springs a leak: water floods all the way round the Request Tray. */
 function leak(round: Round) {
   round.hazards = round.hazards.filter(hazard => hazard.kind !== "puddle");
-  round.hazards.push({ id: ++round.fxSeq, kind: "puddle", point: { ...office.puddle }, born: round.elapsed, until: round.elapsed + settings.puddleLasts });
-  announce(round, "The water cooler is leaking! Mind the puddle by the tray.");
+  const point = { x: furniture.inbox.x, z: furniture.inbox.z };
+  round.hazards.push({ id: ++round.fxSeq, kind: "puddle", point, born: round.elapsed, until: round.elapsed + settings.puddleLasts });
+  announce(round, "The water cooler is leaking! The tray's surrounded by water.");
   fx(round, "leak", furniture.cooler);
 }
 
-function dropPeel(round: Round, npc: Wanderer) {
-  const point = { ...npc.point };
-  round.hazards.push({ id: ++round.fxSeq, kind: "peel", point, born: round.elapsed, until: round.elapsed + settings.peelLasts });
-  announce(round, `${nameOf(round, npc.person)} dropped a banana peel! Don't slip.`);
-  fx(round, "peel", point);
-}
-
-/** How far a hazard reaches right now: a puddle spreads quickly, then shrinks as it dries. */
+/**
+ * How far the flood reaches right now, out from the edges of the Request Tray: it spreads quickly, then shrinks back
+ * as it dries.
+ */
 export function hazardRadius(round: Round, hazard: Hazard) {
-  if (hazard.kind === "peel") return settings.peelRadius;
   const spread = Math.min(1, Math.max(0, (round.elapsed - hazard.born) / settings.puddleGrow));
-  const drying = Math.min(1, Math.max(0, (hazard.until - round.elapsed) / 3));
-  return settings.puddleRadius * Math.sqrt(spread) * drying;
+  const drying = Math.min(1, Math.max(0, (hazard.until - round.elapsed) / settings.puddleDry));
+  return settings.spillReach * Math.sqrt(spread) * drying;
 }
 
 /** Whether a player is on the floor after slipping. */
 export const isFallen = (round: Round, index: number) => round.elapsed < (round.players[index]?.fallenUntil ?? 0);
 
 function hazardUnder(round: Round, point: Point) {
+  // The flood is drawn a touch bigger than its slippery part, so its edge is fair
   return round.hazards.find(hazard => round.elapsed < hazard.until
-    && Math.hypot(point.x - hazard.point.x, point.z - hazard.point.z) < hazardRadius(round, hazard) * (hazard.kind === "puddle" ? .85 : 1));
+    && edgeDistance(point, furniture.inbox) < hazardRadius(round, hazard) * .9);
 }
 
 /** Down they go: they slide, drop what they carry a little way ahead, and lie there for a moment. */
-function slip(round: Round, index: number, hazard: Hazard) {
+function slip(round: Round, index: number) {
   const player = round.players[index];
   stopStamp(round, index);
   const speed = settings.slipSlide * (isDashing(round, index) ? 1.4 : 1);
@@ -1036,22 +1068,21 @@ function slip(round: Round, index: number, hazard: Hazard) {
     const ahead = { x: player.position.x + Math.sin(player.facing) * 1.1, z: player.position.z + Math.cos(player.facing) * 1.1 };
     release(round, index, { place: "floor", point: walkable(ahead) ? ahead : { ...player.position } });
   }
-  if (hazard.kind === "peel") hazard.until = round.elapsed;
   round.stats[index].slips++;
-  notify(round, player, hazard.kind === "peel" ? "Banana peel! Whoops!" : "Slipped in the puddle!");
+  notify(round, player, "Slipped in the puddle!");
   fx(round, "slip", player.position, { player: index });
 }
 
 function stepHazards(round: Round) {
   if (round.elapsed >= round.nextErrand) round.nextErrand = startBreak(round) ? Infinity : round.elapsed + 1;
-  // Puddles dry up and used peels get swept away
+  // The flood dries up
   round.hazards = round.hazards.filter(hazard => round.elapsed < hazard.until);
   // Walking or dashing through something slippery knocks you over; standing still in it is fine
   round.players.forEach((player, i) => {
     if (isFallen(round, i) || round.elapsed < player.steadyUntil) return;
     if (!player.moving && !isDashing(round, i)) return;
     const hazard = hazardUnder(round, player.position);
-    if (hazard) slip(round, i, hazard);
+    if (hazard) slip(round, i);
   });
 }
 
@@ -1178,24 +1209,6 @@ function stepSnatcher(round: Round, seconds: number) {
         chicken.card = undefined;
         round.stats[knocker].rescues++;
         fx(round, "rescue", chicken.point, { player: knocker, card: card.id });
-      }
-      return;
-    }
-  }
-
-  // It slips on banana peels too, dropping whatever it stole
-  if (chicken.state !== "dazed") {
-    const peel = round.hazards.find(hazard => hazard.kind === "peel" && round.elapsed < hazard.until
-      && Math.hypot(hazard.point.x - chicken.point.x, hazard.point.z - chicken.point.z) <= settings.peelRadius + .15);
-    if (peel) {
-      peel.until = round.elapsed;
-      chicken.state = "dazed";
-      chicken.dazedUntil = round.elapsed + settings.snatcherDaze * 1.6;
-      fx(round, "slip", chicken.point);
-      if (chicken.card !== undefined) {
-        round.cards[chicken.card].at = { place: "floor", point: { x: chicken.point.x, z: Math.max(chicken.point.z, office.boardZ + .9) } };
-        chicken.card = undefined;
-        announce(round, "The Snatcher slipped on a banana peel and dropped the card! Grab it!");
       }
       return;
     }
@@ -1468,7 +1481,13 @@ function pinTarget(round: Round, point: Point, card: Card): { slot: number } | {
   if (card.kind === "cancelled") return { why: "Cancelled cards go in the shredder" };
   if (!card.approved) return { why: card.kind === "open" ? `Find ${nameOf(round, card.worker)} first` : "Stamp it at the desk first" };
   if (card.day !== day) return { why: `That's a ${days[card.day]} shift, not ${days[day]}` };
-  const slot = [day, day + 7].find(slot => round.needed[slot] && round.board[slot] === undefined);
+  const role = workerRole(round, card);
+  const open = emptySlots(round, day);
+  const slot = open.find(slot => role === undefined || round.slotRoles[slot] === role);
+  if (slot === undefined && open.length) {
+    const needs = roleIn(round.roles, round.slotRoles[open[0]] ?? "").label.toLowerCase();
+    return { why: `${days[day]} needs ${needs}, not ${roleIn(round.roles, role ?? "").label.toLowerCase()}` };
+  }
   if (slot === undefined) {
     const blocked = [day, day + 7].some(slot => cardIn(round, slot)?.kind === "cancelled");
     return { why: blocked ? `Pull the red card off ${days[day]} first` : `${days[day]} is full` };

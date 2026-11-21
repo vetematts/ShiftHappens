@@ -7,8 +7,9 @@ import {
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
 import PhoneController from "./phone-controller";
-import { cardColours, cardText, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
+import { cardColours, cardText, critters, joinsOverLan, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
 import { PlayQr, playUrl, QrCode } from "./play-qr";
+import { Briefing, briefSeconds } from "./briefing";
 import { createSound, type Sound } from "./sound";
 
 const keyboards = [
@@ -34,7 +35,7 @@ const awards = [
   { stat: "shredded", title: "Shredder Supreme", unit: ["card shredded", "cards shredded"] },
   { stat: "rescues", title: "Chicken Wrangler", unit: ["rescue", "rescues"] },
   { stat: "accepted", title: "Staff Whisperer", unit: ["shift accepted", "shifts accepted"] },
-  { stat: "slips", title: "Banana Magnet", unit: ["slip", "slips"] },
+  { stat: "slips", title: "Puddle Jumper", unit: ["slip", "slips"] },
 ] as const;
 const stickReach = 46;
 
@@ -46,7 +47,7 @@ const tips = [
   "A wobbling card is about to be cancelled.",
   "Grab ⚡ to recharge your dash, or for a speed boost when you’re full.",
   "Dash into the Shift Snatcher to make it drop the cards it stole.",
-  "Employees on a break leak the water cooler and drop banana peels. Walk round them, or you’ll slip and drop your card.",
+  "When the water cooler leaks, the tray is flooded for a few seconds. Wait it out, or risk a slip.",
   "Playing alone? Press Q to swap between the critters.",
   "Need a breather? Press Esc to pause.",
   "Roster my team works for cafés, clinics, salons or anything with shifts.",
@@ -264,6 +265,11 @@ function Game() {
   const [muted, setMuted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  // The rules screen before a round: when it moves on by itself (0 when not showing), seconds left, and which phones are ready
+  const briefUntil = useRef(0);
+  const [briefLeft, setBriefLeft] = useState(0);
+  const readySeats = useRef(critters.map(() => false));
+  const [ready, setReady] = useState(() => critters.map(() => false));
   // The 3-2-1-Go before a round: when it ends (0 when not counting), and what the big screen shows
   const countdownUntil = useRef(0);
   const [countIn, setCountIn] = useState("");
@@ -386,7 +392,7 @@ function Game() {
   // Keyboard listeners live in an effect, so they reach the latest press and release through effect events.
   const onKeyDown = useEffectEvent((code: string) => press(code));
   const onKeyUp = useEffectEvent((code: string) => release(code));
-  const onEscape = useEffectEvent(() => (paused.current ? resume() : pause()));
+  const onPauseKey = useEffectEvent(() => (paused.current ? resume() : pause()));
 
   function seatPhone(peer: string) {
     let seat = seats.current.indexOf(peer);
@@ -396,7 +402,7 @@ function Game() {
       setPhones(current => current && { ...current, seats: [...seats.current] });
     }
     // A phone joining mid-round (or during the countdown) brings its critter into the office straight away
-    if (seat !== -1 && seat >= round.current.players.length && (round.current.phase === "playing" || countdownUntil.current)) {
+    if (seat !== -1 && seat >= round.current.players.length && (round.current.phase === "playing" || countdownUntil.current || briefUntil.current)) {
       ensurePlayers(round.current, seat + 1);
       setView(snapshot(round.current));
     }
@@ -417,6 +423,13 @@ function Game() {
     setPhones(current => current && { ...current, seats: [...seats.current] });
   });
   const onPhoneMessage = useEffectEvent((message: Message, peer: string) => {
+    // While the rules are up, a phone's big button means "I'm ready"
+    if ((message.t === "ready" || message.t === "start") && briefUntil.current) {
+      const seat = seats.current.indexOf(peer);
+      if (seat !== -1) phoneReady(seat);
+      return;
+    }
+    if (message.t === "ready") return;
     if (message.t === "start") {
       if (round.current.phase !== "playing" && !setup && !countdownUntil.current) start();
       return;
@@ -462,6 +475,23 @@ function Game() {
   // Wake the relay as the page opens, so it's ready by the time anyone scans the QR code
   useEffect(() => {
     if (!wantsLocalLink()) wakeRelay();
+  }, []);
+
+  /** Esc, the × button or a click on the office around a panel goes back: out of setup, how to play or the phone lobby. */
+  function closeOverlay() {
+    // Not while the rules or the 3-2-1 are up: the round is about to start, and the phones must stay connected
+    if (round.current.phase === "playing" || briefUntil.current || countdownUntil.current) return;
+    if (setup) setSetup(false);
+    else if (help) setHelp(false);
+    else if (phones && round.current.phase === "ready") setPhones(null);
+  }
+  const onEscape = useEffectEvent(closeOverlay);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) onEscape();
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
   }, []);
 
   function startPhones() {
@@ -519,11 +549,23 @@ function Game() {
     let displayedRound: Round | undefined;
     let lastTick = Infinity;
     let shownCount = 0;
+    let shownBrief = 0;
 
     function loop(now: number) {
       const state = round.current;
       const seconds = Math.max(0, (now - previous) / 1000);
       previous = now;
+      // The rules screen moves on to the countdown by itself when its time is up
+      if (briefUntil.current) {
+        const left = Math.min(briefSeconds, Math.ceil((briefUntil.current - now) / 1000));
+        if (left <= 0) {
+          shownBrief = 0;
+          onBriefDone();
+        } else if (left !== shownBrief) {
+          shownBrief = left;
+          setBriefLeft(left);
+        }
+      }
       // Count 3-2-1 down before a round, then let everyone go at once. Nobody can act and the clock stays still until then.
       if (countdownUntil.current) {
         const left = Math.ceil((countdownUntil.current - now) / 1000);
@@ -580,6 +622,7 @@ function Game() {
         lastBroadcast = now;
         const latest = snapshot(state);
         const countdown = countdownUntil.current ? Math.max(1, Math.ceil((countdownUntil.current - now) / 1000)) : 0;
+        const briefing = briefUntil.current ? Math.min(briefSeconds, Math.max(1, Math.ceil((briefUntil.current - now) / 1000))) : 0;
         const awarded = state.phase === "won" || state.phase === "lost" ? awardWinners(latest.stats) : [];
         seats.current.forEach((peer, i) => {
           if (!peer) return;
@@ -589,8 +632,9 @@ function Game() {
             stamping: player?.stamping ?? false, stamp: player?.stamp ?? 0,
             charges: player?.charges ?? settings.dashCharges, regenIn: player?.regenIn ?? 0, boosted: player?.boosted ?? false,
             time: latest.time, filled: latest.filled, needed: latest.needed, news: latest.news,
-            countdown, stats: latest.stats[i],
+            countdown, briefing, ready: readySeats.current[i], stats: latest.stats[i],
             awards: awarded.filter(award => award.winners.includes(i)).map(award => award.title),
+            joined: seats.current.map(Boolean),
           }, peer);
         });
       }
@@ -608,7 +652,12 @@ function Game() {
       // Esc pauses a round in progress, and resumes it from the pause menu
       if (event.code === "Escape" && round.current.phase === "playing") {
         event.preventDefault();
-        if (!event.repeat) onEscape();
+        if (!event.repeat) onPauseKey();
+        return;
+      }
+      if (briefUntil.current && (event.code === "Enter" || event.code === "Space") && !event.repeat) {
+        event.preventDefault();
+        onBriefDone();
         return;
       }
       if (!gameKeys.includes(event.code) || round.current.phase !== "playing" || event.metaKey || event.altKey || event.ctrlKey) return;
@@ -658,8 +707,12 @@ function Game() {
     };
   }, []);
 
-  function start(mode: "quick" | "real" = lastMode.current) {
-    if (countdownUntil.current) return;
+  /**
+   * Sets up a round and starts it. Starting from the menu or the join screen shows the rules first (`brief`);
+   * Play again, or straight after reading How to play, goes straight to the 3-2-1.
+   */
+  function start(mode: "quick" | "real" = lastMode.current, brief = round.current.phase === "ready") {
+    if (countdownUntil.current || briefUntil.current) return;
     lastMode.current = mode;
     paused.current = false;
     setPauseOpen(false);
@@ -682,12 +735,41 @@ function Game() {
         people: team.people.filter(person => person.name.trim()).map(person => ({ ...person, name: person.name.trim() })),
       }, true, total)
       : newRound(quickTeam, false, total);
-    // The round begins when the countdown runs out (see the loop)
     round.current = state;
-    countdownUntil.current = performance.now() + countdownSeconds * 1000;
-    setCountIn(String(countdownSeconds));
     setView(snapshot(state));
     host.current?.focus({ preventScroll: true });
+    if (brief) {
+      // The rules show first; the countdown starts when they're done (see the loop and briefDone)
+      readySeats.current = critters.map(() => false);
+      setReady(readySeats.current);
+      briefUntil.current = performance.now() + briefSeconds * 1000;
+      setBriefLeft(briefSeconds);
+      return;
+    }
+    beginCountdown();
+  }
+
+  /** The 3-2-1 before a round. The round begins when it runs out (see the loop). */
+  function beginCountdown() {
+    countdownUntil.current = performance.now() + countdownSeconds * 1000;
+    setCountIn(String(countdownSeconds));
+  }
+
+  /** Off the rules screen and into the countdown: when the host says go, every phone is ready, or time's up. */
+  function briefDone() {
+    if (!briefUntil.current) return;
+    briefUntil.current = 0;
+    setBriefLeft(0);
+    beginCountdown();
+  }
+  const onBriefDone = useEffectEvent(() => briefDone());
+
+  /** A phone pressed "I'm ready". Once every phone in the room has, the round starts. */
+  function phoneReady(seat: number) {
+    readySeats.current = readySeats.current.map((on, i) => on || i === seat);
+    setReady(readySeats.current);
+    const phonesIn = seats.current.map((peer, i) => (peer ? i : -1)).filter(i => i >= 0);
+    if (phonesIn.length && phonesIn.every(i => readySeats.current[i])) briefDone();
   }
 
   // "Go!" shows for a moment after the round starts, then clears
@@ -783,8 +865,12 @@ function Game() {
   );
 
   const joined = phones ? phones.seats.filter(Boolean).length : 0;
+  const closeButton = (label: string) => (
+    <button type="button" className="panel-close" onClick={closeOverlay} aria-label={`${label} (Esc)`} title={`${label} (Esc)`}>×</button>
+  );
   const joinPanel = phones && (
     <div className="panel panel-join">
+      {closeButton("Back to menu")}
       <div className="join-qr">
         <QrCode text={joinUrl(phones.code, phones.local)} label={`QR code to join room ${phones.code} with a phone`} level="L" margin={3} />
       </div>
@@ -798,12 +884,16 @@ function Game() {
           ))}
         </ul>
         {phones.failed && <p className="phones-error">Couldn’t open the room. Check the internet connection.</p>}
+        {joinsOverLan() && <p className="join-hint">Testing locally: phones must be on the same Wi-Fi as this computer.</p>}
+        {joined > 0 && (
+          <p className="join-hint">When everyone’s in, the {critters[phones.seats.findIndex(Boolean)].emoji} phone taps <b>Start</b>, or start here.</p>
+        )}
         <BigButton tone="primary" icon="▶" title="Start round"
           note={joined ? `${joined} phone${joined === 1 ? "" : "s"} in · keyboard players welcome too` : "Waiting for phones · keyboards work too"}
           onClick={() => start("quick")} />
-        <div className="phones-actions">
-          <button type="button" className="link" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
-          <button type="button" className="link" onClick={() => setPhones(null)}>Back to menu</button>
+        <div className="join-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
+          <button type="button" className="btn btn-ghost" onClick={() => setPhones(null)}>Back to menu</button>
         </div>
       </div>
     </div>
@@ -899,6 +989,10 @@ function Game() {
           </div>
         )}
 
+        {briefLeft > 0 && (
+          <Briefing left={briefLeft} seats={phones ? phones.seats : null} ready={ready} onGo={briefDone} />
+        )}
+
         {countIn && (
           <div className={`countdown${countIn === "Go!" ? " countdown--go" : ""}`} role="status" aria-live="assertive">
             <span key={countIn}>{countIn}</span>
@@ -926,14 +1020,17 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && !playing && !countIn && (
-          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}>
+        {graphics === "ready" && !playing && !countIn && !briefLeft && (
+          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}
+            onClick={event => event.target === event.currentTarget && closeOverlay()}>
             {setup ? (
               <div className="panel panel-wide">
+                {closeButton("Back to menu")}
                 <TeamSetup team={team} onChange={changeTeam} onPlay={() => start("real")} onBack={() => setSetup(false)} />
               </div>
             ) : help ? (
               <div className="panel panel-help">
+                {closeButton("Close how to play")}
                 <p className="kicker">How to play</p>
                 <h2>Move every request through the system and pin the week</h2>
                 <ol className="how">
@@ -941,7 +1038,7 @@ function Game() {
                   <li><span aria-hidden="true">🗑️</span><b>Cancelled</b><small>Pull the red card off the board and feed it to the Shredder. A yellow open shift appears.</small></li>
                   <li><span aria-hidden="true">🟡</span><b>Open shift</b><small>It’s for one employee: their bubble flashes. Chase them down, hand it over, then pin it.</small></li>
                   <li><span aria-hidden="true">🐔</span><b>Shift Snatcher</b><small>The bin chicken nicks pinned cards. Dash into it to make it drop them.</small></li>
-                  <li><span aria-hidden="true">🍌</span><b>Slippery office</b><small>Employees on a break leak the water cooler and drop banana peels. Step in them and you slip and drop your card.</small></li>
+                  <li><span aria-hidden="true">💦</span><b>Slippery office</b><small>The leaking water cooler floods round the tray. Walk through it and you slip and drop your card. Stand still or wait for it to dry.</small></li>
                   <li><span aria-hidden="true">⚡</span><b>Dash charges</b><small>Grab ⚡ to recharge your dash, or for a speed boost when you’re full. A wobbling card is about to be cancelled.</small></li>
                 </ol>
                 <table className="how-table">
@@ -954,7 +1051,7 @@ function Game() {
                 </table>
                 <p className="how-note">Playing alone? Press <kbd>Q</kbd> to cycle through the critters. Press <kbd>Esc</kbd> to pause.</p>
                 <div className="actions">
-                  <button type="button" className="btn btn-primary" onClick={() => { setHelp(false); start("quick"); }}>Got it, let’s play</button>
+                  <button type="button" className="btn btn-primary" onClick={() => { setHelp(false); start("quick", false); }}>Got it, let’s play</button>
                   <button type="button" className="btn btn-ghost" onClick={() => setHelp(false)}>Back</button>
                 </div>
               </div>
@@ -964,17 +1061,30 @@ function Game() {
               <div className="panel panel-menu">
                 <div className="logo"><span className="brand-tag">Shift</span><span className="brand-word">Happens!</span></div>
                 <p className="tagline">You’re helper critters inside the rostering system. Move every shift request through and pin the whole week before time runs out.</p>
-                <BigButton tone="primary" icon="▶" title="Quick play" note="Dental clinic · Mon–Fri · 2 minutes · 2–4 players" onClick={() => start("quick")} />
+                <div className="count" role="group" aria-labelledby="count-label">
+                  <p id="count-label" className="count-label">How many players?</p>
+                  <div className="count-options">
+                    {[2, 3, 4].map(n => (
+                      <button type="button" key={n} aria-pressed={players === n} disabled={n < seatsNeeded(phoneSeats)}
+                        onClick={() => setCount(n)}>
+                        <span className="count-critters" aria-hidden="true">{critters.slice(0, n).map(critter => critter.emoji).join("")}</span>
+                        <b>{n} players</b>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="count-hint">
+                    <span className="count-keys">
+                      {players === 2
+                        ? "The duck and bunny share one keyboard. Want 3 or 4? Pick it here, then add phones."
+                        : `The duck and bunny share the keyboard. The ${players === 3 ? "cat joins" : "cat and frog join"} with ${players === 3 ? "a phone" : "phones"}: tap Phones below.`}
+                    </span>
+                    <span className="count-touch">Everyone else joins on their own phone: tap Phones below and they scan the code.</span>
+                  </p>
+                </div>
+                <BigButton tone="primary" icon="▶" title="Quick play" note={`Dental clinic · Mon–Fri · 2 minutes · ${players} players`} onClick={() => start("quick")} />
                 <BigButton tone="roster" icon="📋" title="Roster my team"
                   note={custom && savedKind ? `Continue your ${savedKind.label.toLowerCase()} week · ${team.people.length} people` : "Your staff and shifts in, a real roster out"}
                   onClick={() => setSetup(true)} />
-                <div className="count" role="group" aria-label="Number of players">
-                  <span>Players</span>
-                  {[2, 3, 4].map(n => (
-                    <button type="button" key={n} aria-pressed={players === n} disabled={n < seatsNeeded(phoneSeats)}
-                      onClick={() => setCount(n)}>{critters[n - 1].emoji} {n}</button>
-                  ))}
-                </div>
                 <div className="tiles">
                   <button type="button" className="tile" data-on={Boolean(phones)} onClick={() => (phones ? setPhones(null) : startPhones())}>
                     <span className="tile-icon tile-icon--phones" aria-hidden="true">📱</span><b>Phones</b><small>{phones ? "Turn off" : "as controllers"}</small>
@@ -1029,7 +1139,7 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && !phones && (
+        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && !briefLeft && !phones && (
           <p className="ticker" key={tip}><b>Tip</b><span>{tips[tip]}</span></p>
         )}
       </section>

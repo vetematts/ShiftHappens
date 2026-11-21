@@ -15,7 +15,9 @@ import type { Stats } from "./round";
 /** What a phone sends: where its stick points, whether the action button is held, and requests to start a round. */
 export type PhoneMessage =
   | { t: "input"; x: number; y: number; act: boolean; dash: boolean }
-  | { t: "start" };
+  | { t: "start" }
+  /** "I'm ready" while the rules are showing before a round. */
+  | { t: "ready" };
 
 /** What the laptop sends back: which critter the phone controls, and what that critter is doing. */
 export type HostMessage =
@@ -41,10 +43,16 @@ export type HostMessage =
     news: string;
     /** Seconds left in the 3-2-1 countdown before a round starts, or 0. */
     countdown?: number;
+    /** Seconds left on the rules screen before the countdown, or 0 when it isn't showing. */
+    briefing?: number;
+    /** Whether this phone has said it's ready on the rules screen. */
+    ready?: boolean;
     /** This critter's tallies this round, for the results on the phone. */
     stats?: Stats;
     /** Award titles this critter won, once the round has ended. */
     awards?: string[];
+    /** Which critters (by seat) have a phone in the room, for the lobby. The lowest one starts the round, like a Jackbox VIP. */
+    joined?: boolean[];
   };
 
 /** The helper critters, by seat. */
@@ -93,8 +101,23 @@ export function joinUrl(code: string, local: boolean) {
   // Phones use the same relay as the laptop. The default needs nothing in the link, which keeps the QR code simple.
   const relay = new URLSearchParams(location.search).get("relay");
   const query = relay && !local && bareHost(relay) !== bareHost(defaultRelay) ? `?relay=${encodeURIComponent(relay)}` : "";
-  return `${location.origin}${location.pathname}${query}#join-${code}${local ? "-local" : ""}`;
+  return `${phoneOrigin(local)}${location.pathname}${query}#join-${code}${local ? "-local" : ""}`;
 }
+
+/**
+ * Where phones should load the game from. Usually this page's own address, but a phone can't open "localhost", so
+ * while testing with `npm run dev` the link uses this computer's Wi-Fi address instead (phones must be on the same
+ * Wi-Fi). Same-browser test links stay on localhost.
+ */
+function phoneOrigin(local: boolean) {
+  // Only the dev server adds this tag (see vite.config.ts); builds never have it
+  const lan = document.querySelector<HTMLMetaElement>('meta[name="dev-lan-origin"]')?.content;
+  const onThisComputer = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  return lan && onThisComputer && !local ? lan : location.origin;
+}
+
+/** Whether phones need to be on this computer's Wi-Fi to join (only when testing with `npm run dev` on localhost). */
+export const joinsOverLan = () => phoneOrigin(false) !== location.origin;
 
 /**
  * The relay server to talk through, if any: `?relay=` in the address, else VITE_RELAY_URL from the build, else the

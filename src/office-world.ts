@@ -1193,55 +1193,40 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     item.sprite.visible = true;
   }
 
-  // Lightning pickups: a chunky extruded bolt with a soft glow disc beneath, pooled by slot
-  const boltShape = new T.Shape();
-  [[.1, .62], [-.26, -.04], [-.04, -.04], [-.14, -.62], [.28, .08], [.06, .08], [.26, .62]].forEach(([bx, by], n) => {
-    if (n === 0) boltShape.moveTo(bx, by);
-    else boltShape.lineTo(bx, by);
-  });
-  boltShape.closePath();
-  const boltGeometry = new T.ExtrudeGeometry(boltShape, { depth: .16, bevelEnabled: true, bevelSize: .05, bevelThickness: .05, bevelSegments: 2 });
-  boltGeometry.translate(0, 0, -.08);
-  const boltMaterial = new T.MeshStandardMaterial({ color: 0xffe033, emissive: 0xffc400, emissiveIntensity: .9, roughness: .35 });
-  // The floor marker contrasts with pale tiles and any stage backdrop: a dark disc ringed in hot magenta and white
-  const boltOutlineMaterial = new T.MeshBasicMaterial({ color: 0x1b1240, side: T.BackSide });
-  const boltGlowTexture = paint(128, 128, pen => {
-    pen.fillStyle = "rgba(27,18,64,.55)";
+  // Lightning pickups: a flat yellow bolt with a solid dark outline that always faces the camera, and a faint shadow
+  const boltPoints = [[.1, .62], [-.26, -.04], [-.04, -.04], [-.14, -.62], [.28, .08], [.06, .08], [.26, .62]];
+  const boltTexture = paint(160, 200, pen => {
     pen.beginPath();
-    pen.arc(64, 64, 60, 0, Math.PI * 2);
+    boltPoints.forEach(([bx, by], n) => {
+      const x = 80 + bx * 220;
+      const y = 100 - by * 145;
+      if (n === 0) pen.moveTo(x, y);
+      else pen.lineTo(x, y);
+    });
+    pen.closePath();
+    pen.lineJoin = "round";
+    pen.lineWidth = 16;
+    pen.strokeStyle = "#1b1240";
+    pen.stroke();
+    pen.fillStyle = "#ffd92e";
     pen.fill();
-    pen.lineWidth = 12;
-    pen.strokeStyle = "#ff2fa0";
-    pen.beginPath();
-    pen.arc(64, 64, 54, 0, Math.PI * 2);
-    pen.stroke();
-    pen.lineWidth = 4;
-    pen.strokeStyle = "#ffffff";
-    pen.beginPath();
-    pen.arc(64, 64, 45, 0, Math.PI * 2);
-    pen.stroke();
   });
-  const boltGlowMaterial = new T.MeshBasicMaterial({ map: boltGlowTexture, transparent: true, depthWrite: false, toneMapped: false });
-  geometries.push(boltGeometry);
-  ownMaterials.push(boltMaterial, boltGlowMaterial, boltOutlineMaterial);
+  const boltMaterial = new T.SpriteMaterial({ map: boltTexture, toneMapped: false });
+  ownMaterials.push(boltMaterial);
   const bolts = Array.from({ length: 6 }, () => {
     const group = new T.Group();
-    const mesh = new T.Mesh(boltGeometry, boltMaterial);
-    mesh.castShadow = true;
-    const outline = new T.Mesh(boltGeometry, boltOutlineMaterial);
-    outline.scale.set(1.16, 1.12, 1.9);
-    mesh.add(outline);
-    mesh.scale.setScalar(1.5);
-    const glow = new T.Mesh(parts.circle, boltGlowMaterial);
-    glow.rotation.x = -Math.PI / 2;
-    glow.position.y = .05;
-    group.add(glow);
-    const hover = new T.Group();
-    hover.add(mesh);
-    group.add(hover);
+    const sprite = new T.Sprite(boltMaterial);
+    sprite.scale.set(.96, 1.2, 1);
+    sprite.renderOrder = 4;
+    group.add(sprite);
+    const shadow = new T.Mesh(parts.circle, parts.shadowMaterial);
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = .04;
+    shadow.scale.set(.45, .3, 1);
+    group.add(shadow);
     group.visible = false;
     scene.add(group);
-    return { group, hover, glow, id: -1, seen: false };
+    return { group, sprite, id: -1, seen: false };
   });
 
   function placeBolts(round: Round, now: number) {
@@ -1261,9 +1246,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       entry.group.visible = true;
       entry.group.position.set(bolt.point.x, 0, bolt.point.z);
       entry.group.scale.setScalar(pop);
-      entry.hover.position.y = 1.25 + (still ? 0 : Math.sin(now * 3 + bolt.id) * .1);
-      entry.hover.rotation.y = still ? .4 : now * 1.2 + bolt.id;
-      entry.glow.scale.setScalar(.95 + (still ? 0 : Math.sin(now * 5 + bolt.id) * .14));
+      entry.sprite.position.y = .95 + (still ? 0 : Math.sin(now * 3 + bolt.id) * .08);
     }
     bolts.forEach(entry => {
       if (entry.seen) return;

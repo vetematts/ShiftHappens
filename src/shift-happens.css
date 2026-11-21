@@ -247,6 +247,9 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 .awards b { color: var(--sun); font-size: .95rem; font-weight: 700; line-height: 1.15; }
 .awards small { color: var(--muted); font-size: .75rem; }
 .phones-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+/* Even, equal buttons under Start round in the phone lobby */
+.join-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.join-actions .btn { padding: .7rem .8rem; font-size: .95rem; }
 
 /* × in the corner of setup, how to play and the phone lobby (Esc and clicking outside do the same) */
 .panel-close { position: absolute; top: .8rem; right: .8rem; z-index: 2; display: grid; place-items: center; width: 2.4rem; height: 2.4rem; min-height: 0; margin: 0; padding: 0 0 .15rem; border: 1px solid var(--edge); border-radius: 50%; background: rgb(255 255 255 / .1); color: var(--cream); font-size: 1.5rem; font-weight: 500; line-height: 1; transition: transform .25s var(--spring), background .2s; }

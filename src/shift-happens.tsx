@@ -435,6 +435,22 @@ function Game() {
     if (!wantsLocalLink()) wakeRelay();
   }, []);
 
+  /** Esc, the × button or a click on the office around a panel goes back: out of setup, how to play or the phone lobby. */
+  function closeOverlay() {
+    if (round.current.phase === "playing") return;
+    if (setup) setSetup(false);
+    else if (help) setHelp(false);
+    else if (phones && round.current.phase === "ready") setPhones(null);
+  }
+  const onEscape = useEffectEvent(closeOverlay);
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) onEscape();
+    };
+    window.addEventListener("keydown", escape);
+    return () => window.removeEventListener("keydown", escape);
+  }, []);
+
   function startPhones() {
     sound.current?.unlock();
     setLinkCopied(false);
@@ -750,8 +766,12 @@ function Game() {
   );
 
   const joined = phones ? phones.seats.filter(Boolean).length : 0;
+  const closeButton = (label: string) => (
+    <button type="button" className="panel-close" onClick={closeOverlay} aria-label={`${label} (Esc)`} title={`${label} (Esc)`}>×</button>
+  );
   const joinPanel = phones && (
     <div className="panel panel-join">
+      {closeButton("Back to menu")}
       <div className="join-qr">
         <QrCode text={joinUrl(phones.code, phones.local)} label={`QR code to join room ${phones.code} with a phone`} level="L" margin={3} />
       </div>
@@ -900,13 +920,16 @@ function Game() {
         )}
 
         {graphics === "ready" && !playing && !countIn && (
-          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}>
+          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}
+            onClick={event => event.target === event.currentTarget && closeOverlay()}>
             {setup ? (
               <div className="panel panel-wide">
+                {closeButton("Back to menu")}
                 <TeamSetup team={team} onChange={changeTeam} onPlay={() => start("real")} onBack={() => setSetup(false)} />
               </div>
             ) : help ? (
               <div className="panel panel-help">
+                {closeButton("Close how to play")}
                 <p className="kicker">How to play</p>
                 <h2>Move every request through the system and pin the week</h2>
                 <ol className="how">

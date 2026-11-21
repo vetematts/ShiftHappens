@@ -110,7 +110,9 @@ const clicked = await evaluate(`(() => {
   return true;
 })()`);
 console.log("clicked quick play:", clicked);
-await sleep(1500);
+await sleep(1200);
+await shot("2a-countdown");
+await sleep(3500);
 await shot("2-round-start");
 
 // Duck starts at the front-left near the tray: step up/left to the tray, grab, then head right to the desk and hold.
@@ -171,7 +173,7 @@ await sleep(1500);
 await shot("9-lost");
 console.log("lost text:", await text());
 await evaluate(`[...document.querySelectorAll("button")].find(b => /play again/i.test(b.innerText))?.click()`);
-await sleep(1500);
+await sleep(4500);
 await evaluate(pin([...Array(14).keys()]));
 await sleep(1500);
 await shot("10-won");

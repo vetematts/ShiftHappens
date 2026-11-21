@@ -1,6 +1,6 @@
 # Shift Happens!
 
-Overcooked, but for rostering. Two to four helper critters live inside a rostering system. Employees keep sending in shift requests, and the helpers race the request cards through the system to fill all 14 shifts on the week's Roster Board in two minutes. Cancellations and a shift-stealing bin chicken keep un-filling it.
+Overcooked, but for rostering. Two to four helper critters (a duck, a bunny, a cat and a frog) live inside a rostering system. Employees keep sending in shift requests, and the helpers race the request cards through the system to fill all 14 shifts on the week's Roster Board in two minutes. Cancellations and a shift-stealing bin chicken keep un-filling it.
 
 **[Play it now](https://vetematts.github.io/ShiftHappens/)** on a laptop or a phone.
 
@@ -15,7 +15,7 @@ Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edwa
 | 🟨 **Open shift** | Take it to the Staff Room and offer it to someone whose bubble shows that day. Once they accept, pin it. No stamp needed. |
 | 🐦 **Shift Snatcher** | A bin chicken sneaks to the board, steals a card and runs for the exit. Dash into it to make it drop the card, then pin it again. If it escapes, the shift becomes an open shift. |
 
-The board only takes an approved card, in an empty slot on the card's day. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). Fill all 14 slots with no red cards to win. The time left is your score.
+The board only takes an approved card, in an empty slot on the card's day. Rounds go Calm (0:00–0:40), Busy (cancellations and the Snatcher start) and Chaos (1:20–2:00, everything speeds up). Fill all 14 slots with no red cards to win. The time left is your score. The end screen shows the finished roster with a **Copy roster** button, plus party awards for whoever pinned, stamped, passed, shredded and rescued the most.
 
 | | Move | Action (hold to stamp) | Dash |
 | --- | --- | --- | --- |
@@ -45,11 +45,12 @@ It warns about places nobody can work and roles without enough shifts between th
 Like a Jackbox party game, the laptop or projector shows the game and phones become the gamepads. Nobody installs anything.
 
 1. Open the game on the laptop and select the **Phones** tile on the menu.
-2. A QR code and a four-letter room code appear. Scan the QR code with a phone camera.
-3. The first phone becomes the duck and the second becomes the bunny. The start screen ticks off each one as it connects.
-4. Select **Start round** on a phone, or start from the laptop. Each phone shows a thumb stick, an action button, what its critter is holding and what the action button will do next.
+2. A QR code and a four-letter room code appear. Scan the QR code with a phone camera, or select **Copy join link** to send the link instead.
+3. Phones become the duck, the bunny, the cat and the frog, in the order they join. The menu ticks off each one as it connects. The cat and the frog walk into the office as soon as a third or fourth phone joins, even mid-round.
+4. Select **Start round** on a phone, or start from the laptop. A 3-2-1-Go countdown plays on the big screen and every phone, so everyone starts together. Each phone shows a thumb stick, an action button, a dash button, what its critter is holding and what the action button will do next.
+5. Phones flash, and buzz on Android, when their critter stamps or pins a card, and when a shift is cancelled or the Snatcher appears. When the round ends, each phone shows that player's awards and tallies, with a **Play again** button.
 
-Extra phones wait and take over a critter as soon as a phone leaves. The keyboard keeps working, so one phone and one keyboard player can play together.
+A fifth phone waits and takes over a critter as soon as a phone leaves. If a phone leaves mid-round, its critter puts down the card it was carrying so nobody gets stuck. The keyboard keeps driving the duck and the bunny, so keyboard and phone players can mix.
 
 **How it works.** There is no game server. The QR code opens the same GitHub Pages site with the room in the address (`#join-ABCD`). The laptop and phones find each other through public Nostr relays using [Trystero](https://github.com/dmotz/trystero), then talk directly over WebRTC. The laptop runs the whole game. Phones send their stick and button about 20 times a second, and the laptop sends each phone its critter's status 5 times a second. The game contacts the relays only after someone selects the **Phones** tile.
 

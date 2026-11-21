@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import { createOfficeWorld } from "./office-world";
 import {
-  beginRound, cardIn, dash, days, filledShifts, heldCard, interact, neededShifts, newRound, nextAction, roleIn, roster,
+  beginRound, cardIn, dash, days, dropCarried, ensurePlayers, filledShifts, heldCard, interact, neededShifts, newRound, nextAction, roleIn, roster,
   sampleTeam, settings, shiftLabel, shifts, stepRound, stopStamp, templates, walk,
   type CardKind, type Round, type Stage, type Team,
 } from "./round";
@@ -23,12 +23,16 @@ const stageNames: Record<Stage, string> = { calm: "Calm", busy: "Busy!", chaos: 
 const stageStart: Record<Stage, number> = { calm: 0, busy: settings.busyAt, chaos: settings.chaosAt };
 const newInput = () => ({ x: 0, y: 0, act: false, dash: false });
 const emptySeats = (): (string | null)[] => critters.map(() => null);
+/** Seconds of 3-2-1 before a round, so everyone on keyboards and phones starts together. */
+const countdownSeconds = 3;
+/** Fun titles for the results, each going to whoever did the most of one job. Ties share the award. */
 const awards = [
-  { stat: "stamped", title: "Stamp Addict" },
-  { stat: "shredded", title: "Shredder Supreme" },
-  { stat: "rescues", title: "Chicken Wrangler" },
-  { stat: "pinned", title: "Pin Master" },
-  { stat: "accepted", title: "Staff Whisperer" },
+  { stat: "pinned", title: "Pin Master", unit: ["card pinned", "cards pinned"] },
+  { stat: "stamped", title: "Stamp Addict", unit: ["card stamped", "cards stamped"] },
+  { stat: "passed", title: "Pass Master", unit: ["pass over the counter", "passes over the counter"] },
+  { stat: "shredded", title: "Shredder Supreme", unit: ["card shredded", "cards shredded"] },
+  { stat: "rescues", title: "Chicken Wrangler", unit: ["rescue", "rescues"] },
+  { stat: "accepted", title: "Staff Whisperer", unit: ["shift accepted", "shifts accepted"] },
 ] as const;
 const stickReach = 46;
 
@@ -99,6 +103,16 @@ function snapshot(round: Round) {
   };
 }
 type View = ReturnType<typeof snapshot>;
+
+/** Who won each award. The end screen and every phone's results both use this. */
+function awardWinners(stats: View["stats"]) {
+  return awards.flatMap(award => {
+    const best = Math.max(0, ...stats.map(entry => entry[award.stat]));
+    if (!best) return [];
+    const winners = stats.flatMap((entry, i) => (entry[award.stat] === best ? [i] : []));
+    return [{ ...award, best, winners }];
+  });
+}
 type HeldCard = View["players"][number]["card"];
 
 function CardChip({ card }: { card: NonNullable<HeldCard> }) {
@@ -113,10 +127,7 @@ const slotText = (slot: SlotView) =>
   slot.state === "filled" ? slot.name : slot.state === "cancelled" ? "Cancelled" : slot.state === "empty" ? slot.label || "Open" : "–";
 
 function Stats({ stats }: { stats: View["stats"] }) {
-  const winners = awards.map(({ stat, title }) => {
-    const best = Math.max(...stats.map(entry => entry[stat]));
-    return { title, player: best > 0 ? stats.findIndex(entry => entry[stat] === best) : -1 };
-  });
+  const winners = awardWinners(stats);
   return (
     <div className="roster-scroll">
       <table className="stats-table">
@@ -131,7 +142,7 @@ function Stats({ stats }: { stats: View["stats"] }) {
             <tr key={critters[i].name} style={{ "--critter": critters[i].colour } as CSSProperties}>
               <th scope="row">
                 <span className="stats-avatar" aria-hidden="true">{critters[i].emoji}</span>
-                <small>{winners.filter(win => win.player === i).map(win => win.title).join(" · ") || "Team player"}</small>
+                <small>{winners.filter(win => win.winners.includes(i)).map(win => win.title).join(" · ") || "Team player"}</small>
               </th>
               <td>{entry.pinned}</td><td>{entry.stamped}</td><td>{entry.shredded}</td><td>{entry.accepted}</td><td>{entry.rescues}</td>
             </tr>
@@ -232,6 +243,10 @@ function Game() {
   const [graphics, setGraphics] = useState<"loading" | "ready" | "failed">("loading");
   const [muted, setMuted] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  // The 3-2-1-Go before a round: when it ends (0 when not counting), and what the big screen shows
+  const countdownUntil = useRef(0);
+  const [countIn, setCountIn] = useState("");
   const [team, setTeam] = useState<Team>(() => copyTeam(sampleTeam));
   const [setup, setSetup] = useState(false);
   const [help, setHelp] = useState(false);
@@ -245,6 +260,10 @@ function Game() {
 
   function copyRoster() {
     navigator.clipboard?.writeText(rosterText(view)).then(() => setCopied(true), () => setCopied(false));
+  }
+
+  function copyJoinLink(code: string, local: boolean) {
+    navigator.clipboard?.writeText(joinUrl(code, local)).then(() => setLinkCopied(true), () => setLinkCopied(false));
   }
 
   // A new tip along the bottom every few seconds while the menu is up
@@ -327,11 +346,14 @@ function Game() {
   function seatPhone(peer: string) {
     let seat = seats.current.indexOf(peer);
     if (seat === -1) {
-      // Mid-round, only critters that exist in this round can be taken
-      const limit = round.current.phase === "playing" ? round.current.players.length : seats.current.length;
-      seat = seats.current.findIndex((taken, i) => !taken && i < limit);
+      seat = seats.current.findIndex(taken => !taken);
       if (seat !== -1) seats.current[seat] = peer;
       setPhones(current => current && { ...current, seats: [...seats.current] });
+    }
+    // A phone joining mid-round (or during the countdown) brings its critter into the office straight away
+    if (seat !== -1 && seat >= round.current.players.length && (round.current.phase === "playing" || countdownUntil.current)) {
+      ensurePlayers(round.current, seat + 1);
+      setView(snapshot(round.current));
     }
     phoneLink.current?.send({ t: "seat", player: seat }, peer);
     return seat;
@@ -345,11 +367,13 @@ function Game() {
     seats.current[seat] = null;
     remote.current[seat] = newInput();
     release(`Phone${seat}`);
+    // Whatever card they were carrying is put down, so it doesn't vanish with a missing player
+    if (round.current.phase === "playing") dropCarried(round.current, seat);
     setPhones(current => current && { ...current, seats: [...seats.current] });
   });
   const onPhoneMessage = useEffectEvent((message: Message, peer: string) => {
     if (message.t === "start") {
-      if (round.current.phase !== "playing" && !setup) start();
+      if (round.current.phase !== "playing" && !setup && !countdownUntil.current) start();
       return;
     }
     if (message.t !== "input") return;
@@ -392,6 +416,7 @@ function Game() {
 
   function startPhones() {
     sound.current?.unlock();
+    setLinkCopied(false);
     setPhones({ code: makeRoomCode(), local: wantsLocalLink(), seats: emptySeats(), failed: false });
   }
 
@@ -448,11 +473,27 @@ function Game() {
     let displayedPhase: Round["phase"] | undefined;
     let displayedRound: Round | undefined;
     let lastTick = Infinity;
+    let shownCount = 0;
 
     function loop(now: number) {
       const state = round.current;
       const seconds = Math.max(0, (now - previous) / 1000);
       previous = now;
+      // Count 3-2-1 down before a round, then let everyone go at once. Nobody can act and the clock stays still until then.
+      if (countdownUntil.current) {
+        const left = Math.ceil((countdownUntil.current - now) / 1000);
+        if (left <= 0) {
+          countdownUntil.current = 0;
+          shownCount = 0;
+          beginRound(state);
+          setCountIn("Go!");
+          effects.play("accept");
+        } else if (left !== shownCount) {
+          shownCount = left;
+          setCountIn(String(left));
+          effects.play("pick");
+        }
+      }
       if (state.phase === "playing" && world) {
         const moves = state.players.map(() => ({ across: 0, downward: 0 }));
         const pressed = keys.current;
@@ -489,6 +530,8 @@ function Game() {
       if (phoneLink.current && now - lastBroadcast >= 200) {
         lastBroadcast = now;
         const latest = snapshot(state);
+        const countdown = countdownUntil.current ? Math.max(1, Math.ceil((countdownUntil.current - now) / 1000)) : 0;
+        const awarded = state.phase === "won" || state.phase === "lost" ? awardWinners(latest.stats) : [];
         seats.current.forEach((peer, i) => {
           if (!peer) return;
           const player = latest.players[i];
@@ -496,6 +539,8 @@ function Game() {
             t: "status", phase: state.phase, prompt: player?.prompt ?? "", card: player?.card ?? null, stage: latest.stage,
             stamping: player?.stamping ?? false, stamp: player?.stamp ?? 0, dashReady: player?.dashReady ?? true,
             time: latest.time, filled: latest.filled, needed: latest.needed, news: latest.news,
+            countdown, stats: latest.stats[i],
+            awards: awarded.filter(award => award.winners.includes(i)).map(award => award.title),
           }, peer);
         });
       }
@@ -557,6 +602,7 @@ function Game() {
   }, []);
 
   function start(mode: "quick" | "real" = lastMode.current) {
+    if (countdownUntil.current) return;
     lastMode.current = mode;
     setSetup(false);
     sound.current?.unlock();
@@ -577,11 +623,20 @@ function Game() {
         people: team.people.filter(person => person.name.trim()).map(person => ({ ...person, name: person.name.trim() })),
       }, true, total)
       : newRound(sampleTeam, false, total);
-    beginRound(state);
+    // The round begins when the countdown runs out (see the loop)
     round.current = state;
+    countdownUntil.current = performance.now() + countdownSeconds * 1000;
+    setCountIn(String(countdownSeconds));
     setView(snapshot(state));
     host.current?.focus({ preventScroll: true });
   }
+
+  // "Go!" shows for a moment after the round starts, then clears
+  useEffect(() => {
+    if (countIn !== "Go!") return;
+    const timer = window.setTimeout(() => setCountIn(""), 900);
+    return () => window.clearTimeout(timer);
+  }, [countIn]);
 
   function toggleSound() {
     sound.current?.unlock();
@@ -645,6 +700,7 @@ function Game() {
   const banner = playing && view.stage !== "calm" && view.elapsed - stageStart[view.stage] < 2.6 ? view.stage : null;
   const savedKind = templates.find(template => template.id === team.kind);
   const custom = team.kind !== "cafe" || team.people.length !== sampleTeam.people.length;
+  const endAwards = view.phase === "won" || view.phase === "lost" ? awardWinners(view.stats) : [];
   const progress = view.needed ? view.filled / view.needed : 0;
 
   const phonePanel = phones && (
@@ -659,7 +715,10 @@ function Game() {
           ))}
         </ul>
         {phones.failed && <p className="phones-error">Couldn’t open the room. Check the internet connection.</p>}
-        <button type="button" className="link" onClick={() => setPhones(null)}>Stop using phones</button>
+        <div className="phones-actions">
+          <button type="button" className="link" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
+          <button type="button" className="link" onClick={() => setPhones(null)}>Stop using phones</button>
+        </div>
       </div>
     </div>
   );
@@ -745,7 +804,7 @@ function Game() {
         )}
 
         {playing && solo && (
-          <div className="touch" aria-label="Player 1 touch controls">
+          <div className="touch" aria-label="Player 1 touch controls" onContextMenu={event => event.preventDefault()}>
             <div className="touch-stick" onPointerDown={stickDown} onPointerMove={stickMove}
               onPointerUp={stickUp} onPointerCancel={stickUp} onLostPointerCapture={stickUp}
               role="presentation">
@@ -780,7 +839,14 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && !playing && (
+        {countIn && (
+          <div className={`countdown${countIn === "Go!" ? " countdown--go" : ""}`} role="status" aria-live="assertive">
+            <span key={countIn}>{countIn}</span>
+            {countIn !== "Go!" && <small>Get ready!</small>}
+          </div>
+        )}
+
+        {graphics === "ready" && !playing && !countIn && (
           <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? " screen--menu" : " screen--end"}`}>
             {setup ? (
               <div className="panel panel-wide">
@@ -855,6 +921,17 @@ function Game() {
                   <span><b>{Math.round(progress * 100)}%</b><small>covered</small></span>
                 </div>
                 <Stats stats={view.stats} />
+                {endAwards.length > 0 && (
+                  <ul className="awards" aria-label="Awards">
+                    {endAwards.map(award => (
+                      <li key={award.stat}>
+                        <span aria-hidden="true">{award.winners.map(i => critters[i].emoji).join("")}</span>
+                        <b>{award.title}</b>
+                        <small>{award.winners.map(i => critters[i].name[0].toUpperCase() + critters[i].name.slice(1)).join(" & ")} · {award.best} {award.unit[award.best === 1 ? 0 : 1]}</small>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <RosterTable view={view} />
                 <div className="actions">
                   <button type="button" className="btn btn-soft" onClick={copyRoster}>{copied ? "Copied ✓" : "Copy roster"}</button>
@@ -868,7 +945,7 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && view.phase === "ready" && !setup && !help && (
+        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && (
           <p className="ticker" key={tip}><b>Tip</b><span>{tips[tip]}</span></p>
         )}
       </section>

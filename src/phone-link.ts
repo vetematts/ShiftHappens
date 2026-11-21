@@ -6,6 +6,8 @@
  * stand-in that only connects tabs in the same browser, for testing without a network.
  */
 
+import type { Stats } from "./round";
+
 /** What a phone sends: where its stick points, whether the action button is held, and requests to start a round. */
 export type PhoneMessage =
   | { t: "input"; x: number; y: number; act: boolean; dash: boolean }
@@ -28,6 +30,12 @@ export type HostMessage =
     filled: number;
     needed: number;
     news: string;
+    /** Seconds left in the 3-2-1 countdown before a round starts, or 0. */
+    countdown?: number;
+    /** This critter's tallies this round, for the results on the phone. */
+    stats?: Stats;
+    /** Award titles this critter won, once the round has ended. */
+    awards?: string[];
   };
 
 /** The helper critters, by seat. */

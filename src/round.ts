@@ -357,7 +357,9 @@ export type Player = {
   dashReady: number;
 };
 
-export type Stats = { pinned: number; stamped: number; shredded: number; accepted: number; rescues: number };
+/** What each critter did this round, for the awards on the end screen and the phones. */
+export type Stats = { pinned: number; stamped: number; passed: number; shredded: number; accepted: number; rescues: number };
+const noStats = (): Stats => ({ pinned: 0, stamped: 0, passed: 0, shredded: 0, accepted: 0, rescues: 0 });
 
 export type FxKind =
   | "spawn" | "pick" | "put" | "stamp" | "pin" | "nope" | "cancel" | "shred" | "open" | "accept"
@@ -491,6 +493,10 @@ function shortfall(round: Round, day: number) {
 // Setup
 // ---------------------------------------------------------------------------------------------------------------
 
+/** A round has one critter per player: at least two so the keyboard always works, and up to four with phones. */
+export const minPlayers = 2;
+export const maxPlayers = 4;
+
 function makePlayer(index: number): Player {
   return {
     position: { ...office.spawns[index] }, facing: index % 2 ? Math.PI : 0, moving: false, stamping: false,
@@ -518,7 +524,7 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
   const people = team.people.length ? team.people : sampleTeam.people;
   const staff = people.map((person, id) => ({ ...person, days: [...person.days], id }));
   const roomStaff = shuffle(staff.map(person => person.id)).slice(0, settings.staffInRoom);
-  const count = Math.max(1, Math.min(settings.maxPlayers, players));
+  const count = Math.max(minPlayers, Math.min(maxPlayers, Math.floor(players) || minPlayers));
   // One card per shift: a shift is needed when the team needs anyone on it.
   const places = slotsOf(team);
   const slotRoles = shifts.map((_, shift) => places.find(place => place.shift === shift)?.role ?? null);
@@ -542,7 +548,7 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
       kind: "staff" as const, id: i, person, point: { ...office.staffSpots[i % office.staffSpots.length] },
       days: freeDays(staff[person]),
     })),
-    stats: Array.from({ length: count }, () => ({ pinned: 0, stamped: 0, shredded: 0, accepted: 0, rescues: 0 })),
+    stats: Array.from({ length: count }, noStats),
     fx: [],
     fxSeq: 0,
     news: { text: "", until: 0 },
@@ -1046,5 +1052,21 @@ export function interact(round: Round, index: number) {
     fx(round, "nope", position, { player: index, card: card.id });
     return;
   }
+  if (pad !== undefined) round.stats[index].passed++;
   release(round, index, pad === undefined ? { place: "floor", point: { ...position } } : { place: "counter", pad });
+}
+
+/** Adds critters until the round has `count` players (up to four), so a phone can drop in at any time. */
+export function ensurePlayers(round: Round, count: number) {
+  while (round.players.length < Math.min(count, maxPlayers)) {
+    round.players.push(makePlayer(round.players.length));
+    round.stats.push(noStats());
+  }
+}
+
+/** Puts down whatever card this critter is carrying, where it stands. Used when a phone player leaves mid-round. */
+export function dropCarried(round: Round, index: number) {
+  const player = round.players[index];
+  if (!player || player.holding === undefined) return;
+  release(round, index, { place: "floor", point: { ...player.position } });
 }

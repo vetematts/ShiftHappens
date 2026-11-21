@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type
 import { createOfficeWorld } from "./office-world";
 import {
   beginRound, cardIn, dash, days, dropCarried, ensurePlayers, filledShifts, heldCard, interact, neededShifts, newRound, nextAction, roleIn, roster,
-  sampleTeam, settings, shiftLabel, shifts, stepRound, stopStamp, templates, walk,
+  sampleTeam, settings, shiftLabel, shifts, stageAt, stepRound, stopStamp, templates, walk,
   type CardKind, type Round, type Stage, type Team,
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
@@ -21,6 +21,8 @@ const player2Keys = [keyboards[1].up, keyboards[1].left, keyboards[1].down, keyb
 const kindNames: Record<CardKind, string> = { request: "Request", open: "Open shift", cancelled: "Cancelled" };
 const stageNames: Record<Stage, string> = { calm: "Calm", busy: "Busy!", chaos: "Chaos!" };
 const stageStart: Record<Stage, number> = { calm: 0, busy: settings.busyAt, chaos: settings.chaosAt };
+/** How fast the background music plays in each stage (1 is normal). */
+const musicTempo: Record<Stage, number> = { calm: 1, busy: 1.08, chaos: 1.16 };
 const newInput = () => ({ x: 0, y: 0, act: false, dash: false });
 const emptySeats = (): (string | null)[] => critters.map(() => null);
 /** Seconds of 3-2-1 before a round, so everyone on keyboards and phones starts together. */
@@ -518,8 +520,11 @@ function Game() {
         const left = Math.ceil(settings.duration - state.elapsed);
         if (left <= 10 && left < lastTick && left > 0) effects.play("tick");
         lastTick = left;
+        // Music speeds up each stage, and again for the last ten seconds
+        effects.setMusic(left <= 10 ? 1.35 : musicTempo[stageAt(state.elapsed)]);
       } else {
         lastTick = Infinity;
+        effects.setMusic(0);
       }
       if (now - lastFit >= 250) {
         lastFit = now;
@@ -597,6 +602,7 @@ function Game() {
       window.removeEventListener("keyup", keyup);
       window.removeEventListener("blur", clearKeys);
       document.removeEventListener("visibilitychange", clearKeys);
+      effects.setMusic(0);
       world?.dispose();
     };
   }, []);

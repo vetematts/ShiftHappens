@@ -2,7 +2,7 @@ import * as T from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
-  atBoard, atDesk, atShredder, atTray, cardIn, columnAt, columnX, days, furniture, heldCard, isDashing,
+  atBoard, atDesk, atShredder, atTray, cardIn, columnAt, columnGap, columnX, days, furniture, heldCard, isDashing,
   office, settings, staffInReach, traySpot, wantedBy,
   type Card, type Fx, type Npc, type Round,
 } from "./round";
@@ -25,8 +25,15 @@ const playerColours = [
 ];
 const critterKinds = ["duck", "bunny", "cat", "frog"] as const;
 const boardY = 1.72;
-const boardZ = -5.36;
-const boardWidth = 15.4;
+// Room dimensions all derive from the rules' layout: the walls sit just outside the walkable bounds,
+// and the board hangs on the back wall a little behind the line players stand on.
+const { x: roomX, z: roomZ } = office.bounds;
+const boardZ = office.boardZ - 1.01;
+const boardMargin = 1.52;
+const boardWidth = 6 * columnGap + 2 * boardMargin;
+const boardPixels = Math.round(boardWidth * 133);
+const backWallZ = -(roomZ + .64);
+const sideWallX = roomX + .77;
 const boardHeight = 1.95;
 // Fredoka tops out at 700; the page loads it before the office is drawn
 const font = (weight: number, size: number) =>
@@ -238,7 +245,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   sun.position.set(-6, 15, 9);
   sun.castShadow = true;
   sun.shadow.mapSize.setScalar(touch ? 1024 : 2048);
-  Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 10, bottom: -10, near: 2, far: 40 });
+  Object.assign(sun.shadow.camera, { left: -(roomX + 3.75), right: roomX + 3.75, top: roomZ + 4.9, bottom: -(roomZ + 4.9), near: 2, far: 40 });
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -.0004;
   sun.shadow.normalBias = .035;
@@ -335,37 +342,47 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   }
 
   // Floor: a chunky island with soft checker tiles
-  rbox(scene, colours.baseShade, 0, -.62, 0, 20.5, .5, 12.2, .22).castShadow = false;
-  rbox(scene, colours.base, 0, -.26, 0, 20.3, .46, 12, .2).castShadow = false;
+  rbox(scene, colours.baseShade, 0, -.62, 0, 2 * roomX + 2, .5, 2 * roomZ + 2, .22).castShadow = false;
+  rbox(scene, colours.base, 0, -.26, 0, 2 * roomX + 1.8, .46, 2 * roomZ + 1.8, .2).castShadow = false;
   const tileGeometry = new RoundedBoxGeometry(.96, .12, .96, 2, .045);
   geometries.push(tileGeometry);
   const tileMaterial = new T.MeshStandardMaterial({ roughness: .86 });
   ownMaterials.push(tileMaterial);
-  const tiles = new T.InstancedMesh(tileGeometry, tileMaterial, 19 * 11);
+  // Odd counts keep a row of tiles centred on z = 0, where the back/front colours split
+  const tileCols = 2 * Math.floor(roomX) + 1;
+  const tileRows = 2 * Math.floor(roomZ) + 1;
+  const tileMid = (tileRows - 1) / 2;
+  const tiles = new T.InstancedMesh(tileGeometry, tileMaterial, tileCols * tileRows);
   tiles.receiveShadow = true;
   const matrix = new T.Matrix4();
   const tint = new T.Color();
-  for (let row = 0, i = 0; row < 11; row++) {
-    for (let col = 0; col < 19; col++, i++) {
-      const back = row < 5;
+  for (let row = 0, i = 0; row < tileRows; row++) {
+    for (let col = 0; col < tileCols; col++, i++) {
+      const back = row < tileMid;
       const set = back ? colours.tileBack : colours.tileFront;
-      tiles.setMatrixAt(i, matrix.makeTranslation(col - 9, -.02, row - 5));
+      tiles.setMatrixAt(i, matrix.makeTranslation(col - (tileCols - 1) / 2, -.02, row - tileMid));
       tiles.setColorAt(i, tint.setHex(set[(row + col) % 2]));
     }
   }
   scene.add(tiles);
-  const rug = rbox(scene, colours.rug, -3.5, .045, 3.35, 9.4, .04, 2.5, .02);
+  const rugLeft = office.tray.x - furniture.inbox.w / 2 - .35;
+  const rugRight = office.desk.x + furniture.desk.w / 2 + .35;
+  const rugX = (rugLeft + rugRight) / 2;
+  const rugWidth = rugRight - rugLeft;
+  const rugZ = (office.tray.z + office.desk.z) / 2 - .05;
+  const rug = rbox(scene, colours.rug, rugX, .045, rugZ, rugWidth, .04, 2.5, .02);
   rug.castShadow = false;
-  rbox(scene, 0xffe1e7, -3.5, .07, 3.35, 9, .02, 2.1, .01).castShadow = false;
+  rbox(scene, 0xffe1e7, rugX, .07, rugZ, rugWidth - .4, .02, 2.1, .01).castShadow = false;
 
   // Walls
-  rbox(scene, colours.wallLow, 0, .55, -5.74, 20.3, 1.1, .36, .1);
-  rbox(scene, colours.wallHigh, 0, 2.05, -5.8, 20.3, 1.95, .26, .1);
-  rbox(scene, colours.trim, 0, 3.06, -5.72, 20.5, .16, .46, .06);
-  rbox(scene, colours.trim, 0, 1.13, -5.55, 20.3, .08, .1, .03);
-  for (const x of [-10.02, 10.02]) {
-    rbox(scene, colours.wallLow, x, .48, -.12, .36, .96, 11.6, .12);
-    rbox(scene, colours.trim, x, .98, -.12, .5, .1, 11.7, .04);
+  const wallLength = 2 * roomX + 1.8;
+  rbox(scene, colours.wallLow, 0, .55, backWallZ, wallLength, 1.1, .36, .1);
+  rbox(scene, colours.wallHigh, 0, 2.05, backWallZ - .06, wallLength, 1.95, .26, .1);
+  rbox(scene, colours.trim, 0, 3.06, backWallZ + .02, wallLength + .2, .16, .46, .06);
+  rbox(scene, colours.trim, 0, 1.13, backWallZ + .19, wallLength, .08, .1, .03);
+  for (const x of [-sideWallX, sideWallX]) {
+    rbox(scene, colours.wallLow, x, .48, -.12, .36, .96, 2 * roomZ + 1.4, .12);
+    rbox(scene, colours.trim, x, .98, -.12, .5, .1, 2 * roomZ + 1.5, .04);
   }
 
   // Roster board
@@ -376,18 +393,18 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   });
   // The cork is painted once; the shift outlines are repainted when a round brings a different week
   const cork = document.createElement("canvas");
-  cork.width = 2048;
+  cork.width = boardPixels;
   cork.height = 260;
   {
     const pen = cork.getContext("2d")!;
     pen.fillStyle = colours.cork;
-    pen.fillRect(0, 0, 2048, 260);
-    for (let i = 0; i < 2600; i++) {
+    pen.fillRect(0, 0, boardPixels, 260);
+    for (let i = 0; i < boardPixels * 1.3; i++) {
       pen.fillStyle = i % 3 ? "rgba(150,90,40,.16)" : "rgba(255,240,210,.22)";
-      pen.fillRect(Math.random() * 2048, Math.random() * 260, 3, 3);
+      pen.fillRect(Math.random() * boardPixels, Math.random() * 260, 3, 3);
     }
   }
-  const boardTexture = paint(2048, 260, () => {});
+  const boardTexture = paint(boardPixels, 260, () => {});
   const boardCanvas = boardTexture.image as HTMLCanvasElement;
   let paintedWeek = "";
 
@@ -397,7 +414,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     if (key === paintedWeek) return;
     paintedWeek = key;
     const pen = boardCanvas.getContext("2d")!;
-    const sx = 2048 / boardWidth;
+    const sx = boardPixels / boardWidth;
     const sy = 260 / boardHeight;
     const px = (x: number) => (x + boardWidth / 2) * sx;
     const py = (y: number) => (boardHeight / 2 - (y - boardY)) * sy;
@@ -434,8 +451,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     });
     pen.font = font(900, 30);
     pen.fillStyle = "#6b3f1f";
-    pen.fillText("AM", px(-7.15), py(boardY + .22));
-    pen.fillText("PM", px(-7.15), py(boardY - .5));
+    pen.fillText("AM", px(columnX(0) - .97), py(boardY + .22));
+    pen.fillText("PM", px(columnX(0) - .97), py(boardY - .5));
     boardTexture.needsUpdate = true;
   }
   face(scene, boardTexture, 0, boardY, boardZ + .05, boardWidth, boardHeight);
@@ -456,7 +473,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   // Wall clock that follows the round timer, and a poster
   const clock = new T.Group();
-  clock.position.set(8.92, 1.95, boardZ + .02);
+  clock.position.set((boardWidth / 2 + roomX) / 2 + .1, 1.95, boardZ + .02);
   scene.add(clock);
   cylinder(clock, 0xff7a8a, 0, 0, 0, .62, .16, true).rotation.x = Math.PI / 2;
   const clockFace = face(clock, paint(256, 256, pen => {
@@ -481,7 +498,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   const clockRim = clock.children[0] as T.Mesh;
 
   const poster = new T.Group();
-  poster.position.set(-8.9, 1.95, boardZ + .02);
+  poster.position.set(-((boardWidth / 2 + roomX) / 2 + .1), 1.95, boardZ + .02);
   poster.rotation.z = .05;
   scene.add(poster);
   rbox(poster, colours.white, 0, 0, 0, 1.25, 1.55, .04, .03);
@@ -502,9 +519,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   }), 0, 0, .025, 1.13, 1.43);
 
   // String lights along the top of the wall
-  const lightCurve = new T.CatmullRomCurve3(Array.from({ length: 9 }, (_, i) => {
-    const x = -9.9 + i * 2.475;
-    return new T.Vector3(x, 2.92 - (i % 2 ? .28 : 0), -5.6);
+  const lightPoints = 2 * Math.round(roomX / 2.3) + 1;
+  const lightCurve = new T.CatmullRomCurve3(Array.from({ length: lightPoints }, (_, i) => {
+    const x = -(roomX + .65) + i * 2 * (roomX + .65) / (lightPoints - 1);
+    return new T.Vector3(x, 2.92 - (i % 2 ? .28 : 0), -(roomZ + .5));
   }));
   const wire = new T.TubeGeometry(lightCurve, 120, .015, 5, false);
   geometries.push(wire);
@@ -514,7 +532,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   geometries.push(bulbGeometry);
   const bulbMaterial = new T.MeshBasicMaterial({ toneMapped: false });
   ownMaterials.push(bulbMaterial);
-  const bulbCount = 26;
+  const bulbCount = Math.round(1.3 * (roomX + .65) * 2);
   const bulbs = new T.InstancedMesh(bulbGeometry, bulbMaterial, bulbCount);
   for (let i = 0; i < bulbCount; i++) {
     const point = lightCurve.getPointAt((i + .5) / bulbCount);
@@ -535,7 +553,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     rbox(scene, 0x7bbde0, x, .5, -.44, .9, .5, .02, .02).castShadow = false;
   }
   const pads = office.pass.map(point => rbox(scene, colours.pad, point.x, 1.02, point.z, 1.32, .055, .78, .025, true));
-  stationSign("PASS", "#fff27a", 3.45, 1.75, 0, .46);
+  stationSign("PASS", "#fff27a", office.counterRight - 1.65, 1.75, 0, .46);
 
   // Request inbox
   const inbox = new T.Group();
@@ -653,7 +671,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   // Exit door on the east wall: the Shift Snatcher sneaks in and runs out through here
   const door = new T.Group();
-  door.position.set(9.83, 0, office.exit.z);
+  door.position.set(roomX + .58, 0, office.exit.z);
   scene.add(door);
   rbox(door, 0x3b3350, .05, 1.0, 0, .1, 2.0, 1.2, .02).castShadow = false;
   for (const z of [-.68, .68]) rbox(door, colours.trim, 0, 1.05, z, .22, 2.2, .16, .05);
@@ -1185,20 +1203,35 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   const boltGeometry = new T.ExtrudeGeometry(boltShape, { depth: .16, bevelEnabled: true, bevelSize: .05, bevelThickness: .05, bevelSegments: 2 });
   boltGeometry.translate(0, 0, -.08);
   const boltMaterial = new T.MeshStandardMaterial({ color: 0xffe033, emissive: 0xffc400, emissiveIntensity: .9, roughness: .35 });
-  const boltGlowTexture = paint(64, 64, pen => {
-    const fade = pen.createRadialGradient(32, 32, 2, 32, 32, 32);
-    fade.addColorStop(0, "rgba(255,230,90,.9)");
-    fade.addColorStop(1, "rgba(255,200,40,0)");
-    pen.fillStyle = fade;
-    pen.fillRect(0, 0, 64, 64);
+  // The floor marker contrasts with pale tiles and any stage backdrop: a dark disc ringed in hot magenta and white
+  const boltOutlineMaterial = new T.MeshBasicMaterial({ color: 0x1b1240, side: T.BackSide });
+  const boltGlowTexture = paint(128, 128, pen => {
+    pen.fillStyle = "rgba(27,18,64,.55)";
+    pen.beginPath();
+    pen.arc(64, 64, 60, 0, Math.PI * 2);
+    pen.fill();
+    pen.lineWidth = 12;
+    pen.strokeStyle = "#ff2fa0";
+    pen.beginPath();
+    pen.arc(64, 64, 54, 0, Math.PI * 2);
+    pen.stroke();
+    pen.lineWidth = 4;
+    pen.strokeStyle = "#ffffff";
+    pen.beginPath();
+    pen.arc(64, 64, 45, 0, Math.PI * 2);
+    pen.stroke();
   });
   const boltGlowMaterial = new T.MeshBasicMaterial({ map: boltGlowTexture, transparent: true, depthWrite: false, toneMapped: false });
   geometries.push(boltGeometry);
-  ownMaterials.push(boltMaterial, boltGlowMaterial);
+  ownMaterials.push(boltMaterial, boltGlowMaterial, boltOutlineMaterial);
   const bolts = Array.from({ length: 6 }, () => {
     const group = new T.Group();
     const mesh = new T.Mesh(boltGeometry, boltMaterial);
     mesh.castShadow = true;
+    const outline = new T.Mesh(boltGeometry, boltOutlineMaterial);
+    outline.scale.set(1.16, 1.12, 1.9);
+    mesh.add(outline);
+    mesh.scale.setScalar(1.5);
     const glow = new T.Mesh(parts.circle, boltGlowMaterial);
     glow.rotation.x = -Math.PI / 2;
     glow.position.y = .05;
@@ -1228,9 +1261,9 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       entry.group.visible = true;
       entry.group.position.set(bolt.point.x, 0, bolt.point.z);
       entry.group.scale.setScalar(pop);
-      entry.hover.position.y = .85 + (still ? 0 : Math.sin(now * 3 + bolt.id) * .1);
+      entry.hover.position.y = 1.25 + (still ? 0 : Math.sin(now * 3 + bolt.id) * .1);
       entry.hover.rotation.y = still ? .4 : now * 1.2 + bolt.id;
-      entry.glow.scale.setScalar(.7 + (still ? 0 : Math.sin(now * 4 + bolt.id) * .06));
+      entry.glow.scale.setScalar(.95 + (still ? 0 : Math.sin(now * 5 + bolt.id) * .14));
     }
     bolts.forEach(entry => {
       if (entry.seen) return;
@@ -1242,9 +1275,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   // Camera
   const camera = new T.PerspectiveCamera(30, 1, .5, 140);
   const focus = new T.Vector3(0, .5, .1);
-  const corners = [-10.3, 10.3].flatMap(x => [
+  const cornerX = roomX + 1.05;
+  const corners = [-cornerX, cornerX].flatMap(x => [
     // Front bottom edge of the island base, back floor corner, and the top of the back wall
-    new T.Vector3(x, -.9, 6.15), new T.Vector3(x, -.5, -6), new T.Vector3(x, 3.15, -5.9),
+    new T.Vector3(x, -.9, roomZ + 1.05), new T.Vector3(x, -.5, -(roomZ + .9)), new T.Vector3(x, 3.15, -(roomZ + .8)),
   ]);
   const ndc = new T.Vector3();
   const yaw = 0;
@@ -1266,7 +1300,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     const direction = new T.Vector3();
     const top = Math.min(.95, 1 - 2 * insetTop / height);
     const bottom = Math.max(touch && tall ? -.6 : touch ? -.9 : -.95, -1 + 2 * insetBottom / height);
-    const span = tall ? Math.max(4.2, 10.3 * aspect * .95) : Infinity;
+    const span = tall ? Math.max(4.2, cornerX * aspect * .95) : Infinity;
     // The room fits when it is narrow enough and its height on screen fits the band; centring comes after.
     const fits = (distance: number) => {
       camera.position.copy(focus).addScaledVector(direction, distance);
@@ -1329,7 +1363,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     }
     basePosition.copy(camera.position);
     const halfView = Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * aspect * far;
-    maxPan = tall ? Math.max(0, 10.4 - halfView * .92) : 0;
+    maxPan = tall ? Math.max(0, cornerX + .1 - halfView * .92) : 0;
   }
 
   function size() {

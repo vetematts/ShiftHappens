@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type
 import { createOfficeWorld } from "./office-world";
 import {
   beginRound, dayRange, days, filledShifts, interact, neededShifts, newRound, nextAction, roleOf, roster, sampleTeam,
-  settings, shifts, stepRound, stopStamp, walk,
+  settings, shifts, stageAt, stepRound, stopStamp, walk,
   type Role, type Round, type Team,
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
@@ -29,6 +29,7 @@ function snapshot(round: Round) {
   return {
     phase: round.phase,
     time: settings.duration - round.elapsed,
+    stage: settings.pace[stageAt(round.elapsed)].name,
     filled: filledShifts(round),
     needed: neededShifts(round),
     week: round.week,
@@ -43,6 +44,7 @@ function snapshot(round: Round) {
       stamp: player.stamping ? (player.carrying?.stamp ?? 0) / settings.stampTime : 0,
       stamping: player.stamping,
       prompt: player.messageUntil > round.elapsed ? player.message : nextAction(round, i),
+      stats: { ...player.stats },
     })),
   };
 }
@@ -431,7 +433,7 @@ function Game() {
         <div className="shifts-score" aria-label="Round score">
           <span><small>Covered</small><strong>{view.filled}<i> / {view.needed}</i></strong></span>
           <span className={urgent ? "shifts-urgent" : undefined}>
-            <small>Time left</small><strong>{clock(view.time)}</strong>
+            <small>Time left{view.phase === "playing" && ` · ${view.stage}`}</small><strong>{clock(view.time)}</strong>
           </span>
           {phones && <span className="shifts-phone-chip" title={`Room ${phones.code}`}><small>Phones</small><strong>📱 {phones.seats.filter(Boolean).length}</strong></span>}
           <button type="button" className="shifts-sound" onClick={toggleSound}
@@ -531,6 +533,14 @@ function Game() {
                   <h2>{view.phase === "won" ? "Week covered!" : "Understaffed"}</h2>
                   <p>{view.phase === "won" ? `Rostered with ${clock(view.time)} to spare.` : `${view.filled} of ${view.needed} shifts covered.`}</p>
                   <RosterTable slots={view.slots} week={view.week} />
+                  <ul className="shifts-stats" aria-label="How each critter did">
+                    {view.players.map(({ stats }, i) => (
+                      <li key={critterNames[i]}>
+                        <b>{i === 0 ? "🐥 Duck" : "🐰 Bunny"}</b> signed on {stats.signed} · rostered {stats.rostered}
+                        {stats.shooed > 0 && <> · stopped the bin chicken {stats.shooed === 1 ? "once" : `${stats.shooed} times`}</>}
+                      </li>
+                    ))}
+                  </ul>
                   <div className="shifts-end-actions">
                     <button type="button" className="shifts-copy" onClick={() => copyRoster(view.slots, view.week)}>{copied ? "Copied" : "Copy roster"}</button>
                     {view.custom && <button type="button" className="shifts-copy" onClick={() => setSetup(true)}>Edit team</button>}

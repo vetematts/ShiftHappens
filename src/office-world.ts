@@ -2,7 +2,7 @@ import * as T from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
-  canWork, columnX, furniture, nearStation, office, roleOf, roster, sampleTeam, settings, shifts,
+  canWork, columnX, furniture, nearStation, office, roleOf, roster, sampleTeam, settings, shifts, stageAt,
   type Point, type Role, type Round, type Staff,
 } from "./round";
 
@@ -107,6 +107,50 @@ function makeCritter(kind: Kind, look: typeof playerColours[number], parts: Part
     root, body, head, eyes, ears, arms, feet, ring, kind,
     facing: 0, phase: 0, squash: 0, squashSpeed: 0, blinkAt: 1 + Math.random() * 3, dustAt: 0,
   };
+}
+
+// The Shift Snatcher: an Australian white ibis ("bin chicken") with a bald black head and a long curved beak.
+function makeSnatcher(parts: Parts) {
+  const { ball, capsule } = parts;
+  const feathers = 0xf6f3ec;
+  const root = new T.Group();
+  const body = new T.Group();
+  root.add(body);
+  const shadow = new T.Mesh(parts.circle, parts.shadowMaterial);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = .035;
+  shadow.scale.setScalar(.5);
+  root.add(shadow);
+
+  ball(body, feathers, 0, .66, 0, .32, .28, .44);
+  ball(body, colours.black, 0, .66, -.42, .2, .13, .2);
+  const neck = capsule(body, feathers, 0, .98, .26, .075, .2, .075);
+  neck.rotation.x = .35;
+  const head = new T.Group();
+  head.position.set(0, 1.22, .34);
+  body.add(head);
+  ball(head, colours.black, 0, 0, 0, .13, .13, .15);
+  for (const side of [-1, 1]) {
+    ball(head, colours.white, side * .08, .03, .08, .035, .035, .02, false, .25);
+    ball(head, colours.black, side * .085, .03, .095, .018, .018, .01, false, .2);
+  }
+  // The long beak curves down from the face
+  const beak = new T.Group();
+  beak.position.set(0, -.02, .12);
+  beak.rotation.x = 1.25;
+  head.add(beak);
+  capsule(beak, colours.black, 0, .14, 0, .03, .2, .03);
+  const tip = capsule(beak, colours.black, 0, .34, -.03, .025, .1, .025);
+  tip.rotation.x = -.5;
+  const legs = [-1, 1].map(side => {
+    const leg = new T.Group();
+    leg.position.set(side * .1, .42, 0);
+    body.add(leg);
+    capsule(leg, colours.black, 0, -.2, 0, .028, .2, .028);
+    ball(leg, colours.black, 0, -.4, .06, .06, .02, .1);
+    return leg;
+  });
+  return { root, body, head, legs, facing: 0, step: 0 };
 }
 
 type Parts = ReturnType<typeof makeParts>;
@@ -782,6 +826,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     critter.root.scale.setScalar(1.35);
     scene.add(critter.root);
   });
+  const snatcher = makeSnatcher(parts);
+  snatcher.root.scale.setScalar(1.3);
+  snatcher.root.visible = false;
+  scene.add(snatcher.root);
   const tags = playerColours.map((look, i) => {
     const sprite = new T.Sprite(new T.SpriteMaterial({
       map: paint(128, 80, pen => {
@@ -917,7 +965,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     approve: sign("Signed on!", "#5fe39a"),
     pin: sign("Rostered!", "#ffd35c"),
     sick: sign("Sick call!", "#ff8fb0"),
-    rush: sign("Rush hour!", "#ff8fb0"),
+    busy: sign("Getting busy!", "#ffb35c"),
+    chaos: sign("Chaos!", "#ff8fb0"),
+    chicken: sign("Bin chicken!", "#fff6e6"),
+    snatched: sign("Snatched!", "#ff8fb0"),
+    shooed: sign("Shooed!", "#5fe39a"),
+    saved: sign("Saved!", "#5fe39a"),
+    escaped: sign("Got away!", "#ff8fb0"),
     win: sign("Week covered!", "#ffd35c"),
     lose: sign("Time’s up!", "#ff8fb0"),
   };
@@ -1012,7 +1066,11 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   let tracked: Round | undefined;
   let seen: { place: string; approved: boolean; holder: number }[] = [];
   let lastPhase: Round["phase"] = "ready";
-  let rushed = false;
+  // Which stage of settings.pace the round is in, the last second the clock ticked, and refusals seen per player
+  let stage = 0;
+  let lastTick = 0;
+  let seenRefused: number[] = [];
+  let seenChicken: { mode: Round["snatcher"]["mode"]; carrying?: number } = { mode: "away" };
   let stampSlam = 0;
   const target = new T.Vector3();
 
@@ -1049,7 +1107,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         badge.falling = -10;
       });
       lastPhase = round.phase;
-      rushed = round.elapsed >= settings.rushAt;
+      stage = stageAt(round.elapsed);
+      lastTick = 0;
+      seenRefused = round.players.map(player => player.refused);
+      seenChicken = { mode: round.snatcher.mode, carrying: round.snatcher.carrying };
       return;
     }
 
@@ -1064,6 +1125,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         shake = Math.max(shake, .12);
         badges[slot].popped = now;
         sound?.play("pin");
+      } else if (before !== undefined && round.staff[before].at.place === "snatched") {
+        // The bin chicken pulled them off the board
+        emit(puffs, { x: spot.x, y: spot.y, z: boardZ + .3 }, 10, { colours: [0xfff6e6, 0x2a2433], speed: 1.4, up: .8, gravity: 0, life: .7, size: .9 });
+        popup("snatched", spot.x, spot.y + .9, boardZ + .5, 1);
+        crewFor(round.staff[before]).root.userData.snap = true;
+        shake = Math.max(shake, .14);
+        sound?.play("squawk");
       } else {
         badges[slot].falling = now;
         emit(puffs, { x: spot.x, y: spot.y, z: boardZ + .3 }, 8, { colours: [0xff8fb0, 0xfff6e6], speed: 1.2, up: .8, gravity: 0, life: .7, size: .9 });
@@ -1116,10 +1184,48 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       }
       seen[i] = current;
     });
-    if (round.phase === "playing" && !rushed && round.elapsed >= settings.rushAt) {
-      rushed = true;
-      popup("rush", 0, 3.2, 1, 1.4);
-      sound?.play("rush");
+    round.players.forEach((player, i) => {
+      if (player.refused === seenRefused[i]) return;
+      seenRefused[i] = player.refused;
+      squash(i, 3);
+      sound?.play("nope");
+    });
+    // The bin chicken arriving, being scared off, dropping someone or escaping
+    const chicken = round.snatcher;
+    const where = chicken.position;
+    if (seenChicken.mode === "away" && chicken.mode === "sneaking") {
+      popup("chicken", Math.max(-7, Math.min(7, where.x)), 2.8, where.z, 1.1);
+      sound?.play("squawk");
+    } else if (seenChicken.mode !== "away" && seenChicken.mode !== "fleeing" && chicken.mode === "fleeing" && chicken.carrying === undefined) {
+      popup("shooed", where.x, 2.6, where.z, 1);
+      emit(puffs, { x: where.x, y: .6, z: where.z }, 10, { colours: [0xfff6e6], speed: 1.6, up: 1, gravity: 0, life: .6, size: .9 });
+      sound?.play("rescue");
+    }
+    if (seenChicken.carrying !== undefined && chicken.carrying === undefined) {
+      if (chicken.mode === "fleeing") {
+        popup("saved", where.x, 2.6, where.z, 1);
+        emit(confetti, { x: where.x, y: 1.4, z: where.z }, 14, { colours: confettiColours, speed: 2, up: 3, gravity: 7, life: 1, size: .9 });
+        shake = Math.max(shake, .1);
+        sound?.play("rescue");
+      } else {
+        popup("escaped", Math.sign(where.x) * 7, 2.8, where.z, 1.1);
+        sound?.play("escape");
+      }
+    }
+    seenChicken = { mode: chicken.mode, carrying: chicken.carrying };
+
+    const reached = stageAt(round.elapsed);
+    if (round.phase === "playing" && reached !== stage) {
+      stage = reached;
+      const last = reached === settings.pace.length - 1;
+      popup(last ? "chaos" : "busy", 0, 3.2, 1, 1.4);
+      sound?.play(last ? "chaos" : "rush");
+    }
+    // Tick each second near the end
+    const left = Math.ceil(settings.duration - round.elapsed);
+    if (round.phase === "playing" && left <= settings.tickFrom && left > 0 && left !== lastTick) {
+      lastTick = left;
+      sound?.play("tick");
     }
     if (round.phase !== lastPhase) {
       if (round.phase === "won") {
@@ -1163,6 +1269,11 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         target.set(office.pass[at.pad].x, 1.05, office.pass[at.pad].z);
       } else if (at.place === "floor") {
         target.set(at.point.x, 0, at.point.z);
+      } else if (at.place === "snatched") {
+        // Dangling from the bin chicken's beak
+        const { position: beak, facing: heading } = round.snatcher;
+        target.set(beak.x + Math.sin(heading) * .6, 1.5, beak.z + Math.cos(heading) * .6);
+        facing = heading;
       }
       if (member.root.userData.snap) {
         member.root.position.copy(target);
@@ -1176,7 +1287,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       member.facing += turnBy * (1 - Math.exp(-dt * 12));
       member.root.rotation.y = member.facing;
       // Carried people kick their feet; everyone else bobs gently
-      const kick = at.place === "hand" && !still;
+      const kick = (at.place === "hand" || at.place === "snatched") && !still;
       member.feet.forEach((foot, side) => {
         foot.position.y = .06 + (kick ? Math.max(0, Math.sin(now * 16 + side * Math.PI)) * .08 : 0);
       });
@@ -1331,6 +1442,26 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     });
   }
 
+  function animateSnatcher(round: Round, now: number, dt: number) {
+    const chicken = round.snatcher;
+    const { root, body, head, legs } = snatcher;
+    root.visible = round.phase === "playing" && chicken.mode !== "away";
+    if (!root.visible) return;
+    const still = reducedMotion.matches;
+    root.position.set(chicken.position.x, 0, chicken.position.z);
+    let turnBy = chicken.facing - snatcher.facing;
+    turnBy = Math.atan2(Math.sin(turnBy), Math.cos(turnBy));
+    snatcher.facing += turnBy * (1 - Math.exp(-dt * 14));
+    root.rotation.y = snatcher.facing;
+    const moving = chicken.mode === "sneaking" || chicken.mode === "fleeing";
+    if (moving) snatcher.step += dt * (chicken.mode === "fleeing" ? 22 : 13);
+    legs.forEach((leg, side) => (leg.rotation.x = moving && !still ? Math.sin(snatcher.step + side * Math.PI) * .6 : 0));
+    body.position.y = moving && !still ? Math.abs(Math.sin(snatcher.step)) * .06 : 0;
+    // Pecks at the board while grabbing, and bobs its head while sneaking
+    head.rotation.x = still ? 0 : chicken.mode === "grabbing" ? .4 + Math.abs(Math.sin(now * 14)) * .5 : Math.sin(snatcher.step * .5) * .15;
+    body.rotation.x = chicken.mode === "grabbing" && !still ? .25 : chicken.mode === "fleeing" ? .15 : 0;
+  }
+
   function render() {
     renderer.render(scene, camera);
   }
@@ -1353,6 +1484,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     const still = reducedMotion.matches;
     track(round, now);
     animateCritters(round, now, dt);
+    animateSnatcher(round, now, dt);
     placePeople(round, now, dt);
     highlight(round, now);
 
@@ -1361,10 +1493,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     stamp.position.y = 1.25 - (anyStamping && !still ? Math.abs(Math.sin(now * 9)) * .2 : 0) - stampSlam * .27;
 
     const left = settings.duration - round.elapsed;
+    // Music plays during a round, a little faster each stage and faster again in the final seconds
+    sound?.setMusic(round.phase !== "playing" ? 0 : left <= settings.tickFrom ? 1.35 : 1 + stage * .08);
     hand.rotation.z = -(round.elapsed / settings.duration) * Math.PI * 2;
-    (clockRim.material as T.MeshStandardMaterial).color.setHex(round.phase === "playing" && left <= 10 && Math.sin(now * 10) > 0 ? 0xff3355 : 0xff7a8a);
+    (clockRim.material as T.MeshStandardMaterial).color.setHex(round.phase === "playing" && left <= settings.tickFrom && Math.sin(now * 10) > 0 ? 0xff3355 : 0xff7a8a);
 
-    const twinkle = rushed && round.phase === "playing" ? 6 : 1.6;
+    // The bulbs twinkle faster at each stage
+    const twinkle = round.phase === "playing" ? 1.6 + stage * 4 : 1.6;
     for (let i = 0; i < bulbCount; i++) {
       const level = .75 + Math.sin(now * twinkle + i * 1.7) * .25;
       tint.setHex(bulbColours[i % bulbColours.length]).multiplyScalar(level);
@@ -1421,6 +1556,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       return [right * Math.cos(yaw) - up * Math.sin(yaw), -right * Math.sin(yaw) - up * Math.cos(yaw)];
     },
     dispose() {
+      sound?.setMusic(0);
       observer.disconnect();
       const usedGeometries = new Set<T.BufferGeometry>(geometries);
       const usedMaterials = new Set<T.Material>(ownMaterials);

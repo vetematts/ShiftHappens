@@ -67,11 +67,31 @@ export const settings = {
   duration: 180,
   stampTime: 1.2,
   trayLimit: 4,
-  rushAt: 50,
-  spawnEvery: 3,
-  rushSpawnEvery: 2,
-  sickFrom: 35,
-  sickEvery: 32,
+  /**
+   * The round gets harder in stages. Each starts `from` seconds in. Staff arrive every `spawnEvery` seconds, someone
+   * calls in sick every `sickEvery` seconds, and the bin chicken comes back `snatchEvery` seconds after it leaves.
+   * 0 means never; a stage with 0 after one without stops that event for the rest of the round.
+   */
+  pace: [
+    { name: "Calm", from: 0, spawnEvery: 3, sickEvery: 0, snatchEvery: 0 },
+    { name: "Busy", from: 35, spawnEvery: 2, sickEvery: 32, snatchEvery: 30 },
+    { name: "Chaos", from: 120, spawnEvery: 2, sickEvery: 26, snatchEvery: 18 },
+  ],
+  /** The Shift Snatcher: a bin chicken that steals a rostered shift and runs for the side door. */
+  snatcher: {
+    /** When it first shows up, in seconds. */
+    firstAt: 52,
+    sneakSpeed: 2.3,
+    fleeSpeed: 3.4,
+    /** How long it pecks at the board before it gets the shift, giving players time to stop it. */
+    grabTime: 1.4,
+    /** How close a player must get to scare it off or make it drop who it took. */
+    bumpReach: 1,
+    /** How far out to the side it appears and escapes. */
+    door: 10.8,
+  },
+  /** The clock ticks every second once this many seconds are left. */
+  tickFrom: 10,
   speed: 6.4,
   reach: 1.45,
   /** How far from the edge of the inbox or desk a player can still use it. */
@@ -79,6 +99,11 @@ export const settings = {
   /** Collision radius of a player, close to the size of the drawn critters. */
   body: .42,
 };
+
+/** Which stage of `settings.pace` a round is in after this many seconds. */
+export function stageAt(elapsed: number) {
+  return Math.max(0, settings.pace.findLastIndex(stage => elapsed >= stage.from));
+}
 
 /** Board columns, one per day, centred on the office. */
 export const columnGap = 2.06;
@@ -95,6 +120,9 @@ export const office = {
   boardZ: -4.35,
   pass: [-4.7, -2.6, -.5, 1.6].map(x => ({ x, z: 0 })),
 };
+
+/** The bin chicken walks along this line in front of the board, clear of the furniture at the sides. */
+export const snatchLane = office.boardZ + 1;
 
 /** A solid piece of furniture: centre plus full width (x) and depth (z). */
 export type Block = Point & { w: number; d: number };
@@ -136,7 +164,8 @@ type StaffLocation =
   | { place: "tray" }
   | { place: "hand"; player: number }
   | { place: "counter"; pad: number }
-  | { place: "floor"; point: Point };
+  | { place: "floor"; point: Point }
+  | { place: "snatched" };
 
 /** A team member during a round. They wait at the table, get rostered, then head home until they are needed again. */
 export type Staff = Person & {
@@ -157,6 +186,23 @@ export type Player = {
   moving: boolean;
   message: string;
   messageUntil: number;
+  /** How many times this player has been refused, such as a shift nobody can take. The office says "nope" when it goes up. */
+  refused: number;
+  /** Totals for the end screen. */
+  stats: { signed: number; rostered: number; shooed: number };
+};
+
+/** The bin chicken. It sneaks along the board to a filled shift, pecks at it, then runs off with that person. */
+export type Snatcher = {
+  mode: "away" | "sneaking" | "grabbing" | "fleeing";
+  position: Point;
+  facing: number;
+  /** The shift it is after. */
+  slot: number;
+  /** Staff id of the person it ran off with. */
+  carrying?: number;
+  /** When it next appears while away, or when it gets the shift while grabbing. */
+  timer: number;
 };
 
 export type Round = {
@@ -169,6 +215,7 @@ export type Round = {
   /** Who is rostered on each of the 14 shifts, by staff id. */
   board: (number | undefined)[];
   players: Player[];
+  snatcher: Snatcher;
   /** Latest office news for the interface, such as a sick call. */
   news: { text: string; until: number };
   custom: boolean;
@@ -179,7 +226,7 @@ export function newRound(team: Team = sampleTeam, custom = false): Round {
     phase: "ready",
     elapsed: 0,
     nextSpawn: 0,
-    nextSick: settings.sickFrom,
+    nextSick: settings.pace.find(stage => stage.sickEvery > 0)?.from ?? Infinity,
     week: [...team.week],
     staff: team.people.map((person, id) => ({
       ...person, days: [...person.days], id, approved: false, stamp: 0, worked: 0,
@@ -188,10 +235,11 @@ export function newRound(team: Team = sampleTeam, custom = false): Round {
     board: shifts.map(() => undefined),
     news: { text: "", until: 0 },
     custom,
-    players: [
-      { position: { x: -5.3, z: 2.05 }, facing: 0, moving: false, stamping: false, message: "", messageUntil: 0 },
-      { position: { x: -.5, z: -1.3 }, facing: Math.PI, moving: false, stamping: false, message: "", messageUntil: 0 },
-    ],
+    players: [{ x: -5.3, z: 2.05, facing: 0 }, { x: -.5, z: -1.3, facing: Math.PI }].map(({ x, z, facing }) => ({
+      position: { x, z }, facing, moving: false, stamping: false, message: "", messageUntil: 0, refused: 0,
+      stats: { signed: 0, rostered: 0, shooed: 0 },
+    })),
+    snatcher: { mode: "away", position: { x: settings.snatcher.door, z: snatchLane }, facing: 0, slot: 0, timer: settings.snatcher.firstAt },
   };
 }
 
@@ -245,7 +293,7 @@ export function beginRound(round: Round) {
   if (round.phase !== "ready") return;
   round.phase = "playing";
   for (let i = 0; i < settings.trayLimit; i++) arrive(round);
-  round.nextSpawn = settings.spawnEvery;
+  round.nextSpawn = settings.pace[0].spawnEvery;
 }
 
 function atBoard(point: Point) {
@@ -256,9 +304,10 @@ function atDesk(point: Point) {
   return nearStation(point, furniture.desk);
 }
 
-function notify(round: Round, player: Player, message: string) {
+function refuse(round: Round, player: Player, message: string) {
   player.message = message;
   player.messageUntil = round.elapsed + 2.2;
+  player.refused++;
 }
 
 export function stopStamp(player: Player) {
@@ -286,13 +335,14 @@ export function stepRound(round: Round, seconds: number) {
     round.phase = "lost";
     return;
   }
+  const stage = settings.pace[stageAt(round.elapsed)];
   if (round.elapsed >= round.nextSpawn) {
     arrive(round);
-    round.nextSpawn = round.elapsed + (round.elapsed < settings.rushAt ? settings.spawnEvery : settings.rushSpawnEvery);
+    round.nextSpawn = round.elapsed + stage.spawnEvery;
   }
   if (round.elapsed >= round.nextSick) {
     sickCall(round);
-    round.nextSick = round.elapsed + settings.sickEvery;
+    round.nextSick = stage.sickEvery > 0 ? round.elapsed + stage.sickEvery : Infinity;
   }
   for (const player of round.players) {
     const person = player.carrying;
@@ -305,8 +355,108 @@ export function stepRound(round: Round, seconds: number) {
     if (person.stamp >= settings.stampTime) {
       person.approved = true;
       player.stamping = false;
+      player.stats.signed++;
     }
   }
+  stepSnatcher(round, seconds);
+}
+
+const filledSlots = (round: Round) => round.board.map((id, slot) => (id === undefined ? -1 : slot)).filter(slot => slot >= 0);
+
+// Picks a filled shift for the chicken to go after, or sends it off if there's nothing worth taking.
+function aimSnatcher(round: Round) {
+  const chicken = round.snatcher;
+  const filled = filledSlots(round);
+  if (!filled.length) {
+    chicken.mode = "fleeing";
+    return;
+  }
+  chicken.slot = filled[Math.floor(Math.random() * filled.length)];
+  chicken.mode = "sneaking";
+}
+
+function stepSnatcher(round: Round, seconds: number) {
+  const chicken = round.snatcher;
+  const { sneakSpeed, fleeSpeed, grabTime, bumpReach, door } = settings.snatcher;
+  const stage = settings.pace[stageAt(round.elapsed)];
+
+  if (chicken.mode === "away") {
+    if (round.elapsed < chicken.timer) return;
+    // Wait until there's enough on the board to make stealing worth it
+    if (filledSlots(round).length < 2) {
+      chicken.timer = round.elapsed + 4;
+      return;
+    }
+    aimSnatcher(round);
+    // Come in from the side nearest the shift it wants
+    const side = columnX(chicken.slot % 7) < 0 ? -1 : 1;
+    chicken.position = { x: side * door, z: snatchLane };
+    round.news = { text: "A bin chicken is after a shift! Run into it to scare it off.", until: round.elapsed + 4 };
+    return;
+  }
+
+  // Running into the chicken scares it off, and makes it drop anyone it grabbed
+  const bumper = round.players.findIndex(player =>
+    Math.hypot(player.position.x - chicken.position.x, player.position.z - chicken.position.z) <= bumpReach);
+  if (bumper >= 0 && (chicken.mode !== "fleeing" || chicken.carrying !== undefined)) {
+    const player = round.players[bumper];
+    player.stats.shooed++;
+    if (chicken.carrying !== undefined) {
+      const person = round.staff[chicken.carrying];
+      const edge = office.bounds.x - .7;
+      person.at = { place: "floor", point: { x: Math.max(-edge, Math.min(edge, chicken.position.x)), z: chicken.position.z } };
+      chicken.carrying = undefined;
+      round.news = { text: `${person.name} is safe! Roster them again.`, until: round.elapsed + 3 };
+    }
+    chicken.mode = "fleeing";
+  }
+
+  if (chicken.mode === "sneaking" || chicken.mode === "grabbing") {
+    // The shift it wanted has gone, such as after a sick call
+    if (round.board[chicken.slot] === undefined) aimSnatcher(round);
+  }
+
+  if (chicken.mode === "sneaking") {
+    const dx = columnX(chicken.slot % 7) - chicken.position.x;
+    const stepBy = sneakSpeed * seconds;
+    chicken.facing = Math.sign(dx) * Math.PI / 2;
+    if (Math.abs(dx) <= stepBy) {
+      chicken.position.x += dx;
+      chicken.mode = "grabbing";
+      chicken.timer = round.elapsed + grabTime;
+      chicken.facing = Math.PI;
+    } else {
+      chicken.position.x += Math.sign(dx) * stepBy;
+    }
+    return;
+  }
+
+  if (chicken.mode === "grabbing") {
+    if (round.elapsed < chicken.timer) return;
+    const id = round.board[chicken.slot]!;
+    const person = round.staff[id];
+    round.board[chicken.slot] = undefined;
+    person.worked = Math.max(0, person.worked - 1);
+    person.at = { place: "snatched" };
+    chicken.carrying = id;
+    chicken.mode = "fleeing";
+    round.news = { text: `The bin chicken grabbed ${person.name} off ${shifts[chicken.slot].label}! Catch it!`, until: round.elapsed + 4 };
+    return;
+  }
+
+  // Fleeing out the nearest side
+  const side = chicken.position.x < 0 ? -1 : 1;
+  chicken.facing = side * Math.PI / 2;
+  chicken.position.x += side * fleeSpeed * seconds;
+  if (Math.abs(chicken.position.x) < door) return;
+  if (chicken.carrying !== undefined) {
+    const person = round.staff[chicken.carrying];
+    person.at = { place: "away" };
+    chicken.carrying = undefined;
+    round.news = { text: `The bin chicken got away with ${person.name}. ${shifts[chicken.slot].label} is open again.`, until: round.elapsed + 4 };
+  }
+  chicken.mode = "away";
+  chicken.timer = stage.snatchEvery > 0 ? round.elapsed + stage.snatchEvery : Infinity;
 }
 
 function walkable(point: Point) {
@@ -418,16 +568,17 @@ export function interact(round: Round, index: number) {
   }
   if (atBoard(position)) {
     if (!carrying.approved) {
-      notify(round, player, "Sign them on at the desk first.");
+      refuse(round, player, "Sign them on at the desk first.");
       return;
     }
     const slot = slotFor(round, position, carrying);
     if (slot === undefined) {
-      notify(round, player, `${boardHint(round, position, carrying)}.`);
+      refuse(round, player, `${boardHint(round, position, carrying)}.`);
       return;
     }
     round.board[slot] = carrying.id;
     carrying.worked++;
+    player.stats.rostered++;
     // They head home and come back later if they still have hours and there's work they can do.
     carrying.at = { place: carrying.worked >= carrying.shifts ? "done" : "away" };
     player.carrying = undefined;
@@ -445,7 +596,10 @@ export function interact(round: Round, index: number) {
     return;
   }
   const pad = passInReach(round, position, true);
-  if (pad === undefined && passInReach(round, position, false) !== undefined) return;
+  if (pad === undefined && passInReach(round, position, false) !== undefined) {
+    refuse(round, player, "This part of the counter is full.");
+    return;
+  }
   carrying.at = pad === undefined
     ? { place: "floor", point: { ...position } }
     : { place: "counter", pad };

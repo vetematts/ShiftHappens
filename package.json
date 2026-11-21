@@ -12,7 +12,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "simulate": "node --experimental-strip-types --no-warnings scripts/simulate.ts"
   },
   "dependencies": {
     "qrcode-generator": "2.0.4",

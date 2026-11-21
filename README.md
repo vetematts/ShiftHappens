@@ -13,6 +13,9 @@ Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edwa
 3. Pass them over the counter to your teammate.
 4. Stand at a day on the board and roster them onto an open shift that matches their role, on a day they can work. Nobody works two shifts in one day.
 5. After a shift they head home and come back while they have hours left. Sick calls knock people off the board, so refill those shifts too.
+6. Watch out for the bin chicken. It sneaks along the board, pecks a rostered person off their shift and runs for the side door. Run into it to scare it off, or to make it drop who it took so you can roster them again.
+
+The round gets harder in three stages: **Calm** (no sick calls), **Busy** from 0:35 (sick calls and the bin chicken) and **Chaos** from 2:00 (both come more often). The music speeds up with each stage and again in the last 10 seconds.
 
 Cover every shift before 3:00 runs out to win. The end screen shows the finished roster with a **Copy roster** button.
 
@@ -54,7 +57,10 @@ npm run build      # static site in dist/
 npm run preview    # serve the build locally
 npm run typecheck
 npm run lint
+npm run simulate   # bots play 100 rounds without a browser and report the win rate
 ```
+
+`npm run simulate -- 1 show` plays one round and prints its events and final board. Add `--pause=1` (default 2.5) to change how long the bots hesitate after each action. Use it to check that changes to `settings` in `src/round.ts` still leave a winnable game. In PowerShell, run `node --experimental-strip-types scripts/simulate.ts 200 --pause=1` directly, because PowerShell drops the `--` that passes options through npm.
 
 The office lowers its detail automatically on slower devices. Add `?quality=high` or `?quality=low` to the address to fix the detail level.
 
@@ -64,14 +70,15 @@ React and Vite for the page, Three.js for the 3D office, and no backend. The rul
 
 | File | What it does |
 | --- | --- |
-| `src/round.ts` | All the rules: the team, the week, signing on, rostering, sick calls, collisions, and the timings in `settings` |
+| `src/round.ts` | All the rules: the team, the week, signing on, rostering, sick calls, the bin chicken, collisions, and the timings in `settings` |
 | `src/office-world.ts` | The Three.js office, critters, staff, board and effects |
 | `src/shift-happens.tsx` | The game screen: input, score, start and end screens, and the phone lobby |
 | `src/team-setup.tsx` | The **Run it for real** form, saved in the browser |
 | `src/phone-link.ts` | Room codes, join links and the peer-to-peer link for phones |
 | `src/phone-controller.tsx` | The gamepad a phone shows after scanning the QR code |
 | `src/play-qr.tsx` | QR codes |
-| `src/sound.ts` | Sound effects, synthesised in the browser |
+| `src/sound.ts` | Sound effects and the music loop, synthesised in the browser |
+| `scripts/simulate.ts` | Bots that play rounds in Node to test and tune the rules |
 
 ## Publishing
 

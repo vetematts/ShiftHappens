@@ -117,6 +117,10 @@ body:has(.pad) { margin: 0; background: #241b45; overscroll-behavior: none; }
 .pad-action:active { transform: translateY(.25rem); box-shadow: 0 .15rem 0 #0004; }
 .pad-start { width: auto; padding: 1rem 1.6rem; border-radius: 1.2rem; font-size: 1.25rem; }
 
+/* How each critter did, on the end screen */
+.shifts-stats { display: grid; gap: .2rem; margin: .5rem 0 0; padding: 0; list-style: none; color: #5e5478; font-size: .82rem; font-weight: 700; }
+.shifts-stats b { color: #2a2433; font-weight: 900; }
+
 /* Closed shifts in a custom week */
 .shifts-day > span[data-closed=true] { opacity: .35; }
 .shifts-roster td[data-closed=true] { background: transparent; color: #bdb4d1; }

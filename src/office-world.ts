@@ -1889,30 +1889,88 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     });
   }
 
-  // Puddles and banana peels on the floor (the floor tiles' tops are at y .04, the rug's at .08)
-  const puddleSurface = new T.MeshStandardMaterial({ color: 0x5cb8ff, roughness: .05, metalness: .05, transparent: true, opacity: .82, depthWrite: false });
-  const puddleRim = new T.MeshBasicMaterial({ color: 0x3a8fe0, transparent: true, opacity: .55, depthWrite: false, toneMapped: false });
-  const puddleShine = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .6, depthWrite: false, toneMapped: false });
+  // The cooler's flood round the Request Tray, and banana peels on the floor. The water doesn't write depth and is
+  // layered by render order (rim, then water, then glints), so it always sits on the floor and under anything on it.
+  const puddleSurface = new T.MeshStandardMaterial({ color: 0x5cb8ff, roughness: .05, metalness: .05, depthWrite: false });
+  const puddleRim = new T.MeshBasicMaterial({ color: 0x3a8fe0, depthWrite: false, toneMapped: false });
+  const puddleShine = new T.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, toneMapped: false });
   ownMaterials.push(puddleSurface, puddleRim, puddleShine);
-  function flatDisc(parent: T.Object3D, surface: T.Material, x: number, z: number, size: number, y = .1) {
-    const disc = new T.Mesh(parts.circle, surface);
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.set(x, y, z);
-    disc.scale.setScalar(size);
-    disc.renderOrder = 1;
-    parent.add(disc);
-    return disc;
+  const layer = new Map<T.Material, number>([[puddleRim, 1], [puddleSurface, 2], [puddleShine, 3]]);
+  function flat(parent: T.Object3D, geometry: T.BufferGeometry, surface: T.Material) {
+    const mesh = new T.Mesh(geometry, surface);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.y = .1;
+    mesh.renderOrder = layer.get(surface) ?? 1;
+    parent.add(mesh);
+    return mesh;
   }
-  function makePuddle() {
+  // A rounded rectangle reaching `reach` out from every edge of the tray, cached in small steps as it grows and dries
+  const floodShapes = new Map<number, T.ShapeGeometry>();
+  function floodShape(reach: number) {
+    const key = Math.max(1, Math.round(reach * 25));
+    let geometry = floodShapes.get(key);
+    if (!geometry) {
+      const r = key / 25;
+      const a = furniture.inbox.w / 2;
+      const b = furniture.inbox.d / 2;
+      const outline = new T.Shape();
+      outline.moveTo(-a, -b - r);
+      outline.lineTo(a, -b - r);
+      outline.absarc(a, -b, r, -Math.PI / 2, 0, false);
+      outline.lineTo(a + r, b);
+      outline.absarc(a, b, r, 0, Math.PI / 2, false);
+      outline.lineTo(-a, b + r);
+      outline.absarc(-a, b, r, Math.PI / 2, Math.PI, false);
+      outline.lineTo(-a - r, -b);
+      outline.absarc(-a, -b, r, Math.PI, Math.PI * 1.5, false);
+      geometry = new T.ShapeGeometry(outline, 8);
+      geometries.push(geometry);
+      floodShapes.set(key, geometry);
+    }
+    return geometry;
+  }
+  // Bumps along the flood's edge so it looks spilled rather than drawn: a spot on the tray's edge and which way is out
+  const floodBumps = (() => {
+    const a = furniture.inbox.w / 2;
+    const b = furniture.inbox.d / 2;
+    const corner = Math.SQRT1_2;
+    return [
+      [-1.1, -b, 0, -1], [.1, -b, 0, -1], [1.2, -b, 0, -1], [-.6, b, 0, 1], [.9, b, 0, 1], [-a, .1, -1, 0], [a, -.2, 1, 0],
+      [-a, -b, -corner, -corner], [a, -b, corner, -corner], [-a, b, -corner, corner], [a, b, corner, corner],
+    ] as const;
+  })();
+  function makeFlood() {
     const group = new T.Group();
-    // A blobby shape from overlapping discs, with a darker rim and a couple of glints
-    const shape = [[0, 0, .95], [.5, .28, .6], [-.52, .26, .55], [.22, -.5, .52], [-.36, -.42, .48]] as const;
-    shape.forEach(([x, z, size]) => flatDisc(group, puddleRim, x, z, size + .07, .095));
-    const lobes = shape.map(([x, z, size]) => flatDisc(group, puddleSurface, x, z, size));
-    flatDisc(group, puddleShine, -.22, -.18, .14, .105);
-    flatDisc(group, puddleShine, .32, .12, .08, .105);
+    const rim = flat(group, floodShape(1), puddleRim);
+    const water = flat(group, floodShape(1), puddleSurface);
+    const bumps = floodBumps.map(() => ({ rim: flat(group, parts.circle, puddleRim), water: flat(group, parts.circle, puddleSurface) }));
+    const glints = [[-1.1, -1], [.9, -1], [-1.9, .3]].map(() => flat(group, parts.circle, puddleShine));
     scene.add(group);
-    return { group, lobes };
+    return { group, rim, water, bumps, glints };
+  }
+  function placeFlood(flood: ReturnType<typeof makeFlood>, reach: number, now: number, still: boolean) {
+    flood.group.visible = reach > .02;
+    if (!flood.group.visible) return;
+    flood.rim.geometry = floodShape(reach + .08);
+    flood.water.geometry = floodShape(reach);
+    floodBumps.forEach(([x, z, nx, nz], i) => {
+      const out = reach * .62;
+      const size = reach * (.4 + (i % 3) * .04) * (still ? 1 : 1 + Math.sin(now * 2.2 + i * 1.7) * .04);
+      const bump = flood.bumps[i];
+      bump.water.position.set(x + nx * out, .1, z + nz * out);
+      bump.rim.position.set(x + nx * out, .1, z + nz * out);
+      bump.water.scale.setScalar(size);
+      bump.rim.scale.setScalar(size + .08);
+    });
+    // Glints on the water along the front and back of the tray
+    const a = furniture.inbox.w / 2;
+    const b = furniture.inbox.d / 2;
+    const spots = [[-1.1, -b - reach * .55], [.9, -b - reach * .5], [-a - reach * .5, .3]];
+    flood.glints.forEach((glint, i) => {
+      glint.position.set(spots[i][0], .1, spots[i][1]);
+      glint.scale.set(reach * .16, reach * .05, 1);
+      glint.rotation.z = i === 2 ? Math.PI / 2 : 0;
+    });
   }
   function makePeel() {
     const group = new T.Group();
@@ -1929,12 +1987,14 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     scene.add(group);
     return group;
   }
-  // A trickle of water from the cooler to its puddle
+  // A stream of water from the cooler into the flood
   const trickle = new T.Group();
   scene.add(trickle);
-  flatDisc(trickle, puddleSurface, 0, 0, 1, .098);
+  flat(trickle, parts.circle, puddleSurface);
   trickle.visible = false;
-  type HazardObject = { group: T.Group; lobes: T.Mesh[]; born: number };
+  const streamFrom = { x: furniture.cooler.x + .25, z: furniture.cooler.z - .25 };
+  const streamTo = { x: furniture.inbox.x - furniture.inbox.w / 2, z: furniture.inbox.z + furniture.inbox.d / 2 };
+  type HazardObject = { group: T.Group; flood?: ReturnType<typeof makeFlood>; born: number };
   const hazardObjects = new Map<number, HazardObject>();
   let dripAt = 0;
 
@@ -1946,16 +2006,18 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       present.add(hazard.id);
       let entry = hazardObjects.get(hazard.id);
       if (!entry) {
-        entry = hazard.kind === "puddle" ? { ...makePuddle(), born: now } : { group: makePeel(), lobes: [], born: now };
+        if (hazard.kind === "puddle") {
+          const flood = makeFlood();
+          entry = { group: flood.group, flood, born: now };
+        } else {
+          entry = { group: makePeel(), born: now };
+        }
         hazardObjects.set(hazard.id, entry);
       }
       entry.group.position.set(hazard.point.x, 0, hazard.point.z);
-      if (hazard.kind === "puddle") {
+      if (entry.flood) {
         puddle = hazard;
-        // Grow and shrink across the floor only, so it never sinks into the tiles
-        const radius = Math.max(.001, hazardRadius(round, hazard));
-        entry.group.scale.set(radius, 1, radius);
-        entry.lobes.forEach((lobe, i) => lobe.scale.setScalar((i ? .55 : .95) * (still ? 1 : 1 + Math.sin(now * 2.2 + i * 1.7) * .03)));
+        placeFlood(entry.flood, hazardRadius(round, hazard), now, still);
       } else {
         const pop = Math.min(1, (now - entry.born) / .35);
         entry.group.scale.setScalar(1.6 * Math.max(.001, easeBack(pop)));
@@ -1966,19 +2028,17 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       scene.remove(entry.group);
       hazardObjects.delete(id);
     }
-    // The trickle runs from the cooler to the puddle while it's there; the cooler drips and wobbles while it spreads
-    trickle.visible = Boolean(puddle);
+    // The stream runs from the cooler while the flood is there; the cooler drips and wobbles while it spreads
+    const flow = puddle ? hazardRadius(round, puddle) / settings.spillReach : 0;
+    trickle.visible = flow > .02;
     let leaking = false;
     if (puddle) {
-      const from = { x: furniture.cooler.x + .2, z: furniture.cooler.z - .25 };
-      const dx = puddle.point.x - from.x;
-      const dz = puddle.point.z - from.z;
-      const length = Math.hypot(dx, dz);
-      const width = Math.max(.001, hazardRadius(round, puddle) / settings.puddleRadius) * .22;
-      trickle.position.set((from.x + puddle.point.x) / 2, 0, (from.z + puddle.point.z) / 2);
+      const dx = streamTo.x - streamFrom.x;
+      const dz = streamTo.z - streamFrom.z;
+      trickle.position.set((streamFrom.x + streamTo.x) / 2, 0, (streamFrom.z + streamTo.z) / 2);
       trickle.rotation.y = Math.atan2(dx, dz);
-      trickle.scale.set(width, 1, length / 2);
-      leaking = round.elapsed - puddle.born < settings.puddleGrow + 3;
+      trickle.scale.set(Math.max(.001, flow) * .3, 1, Math.hypot(dx, dz) / 2);
+      leaking = round.elapsed - puddle.born < settings.puddleGrow + 2;
       if (leaking && !still && now > dripAt) {
         dripAt = now + .12;
         emit(puffs, { x: furniture.cooler.x + .3, y: .35, z: furniture.cooler.z - .15 }, 1, { colours: [0x8fd6ff, 0xbfe8ff], speed: .3, up: .1, gravity: 0, life: .5, size: .6 });

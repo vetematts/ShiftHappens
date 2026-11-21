@@ -46,7 +46,8 @@ const tips = [
   "A wobbling card is about to be cancelled.",
   "Grab ⚡ to recharge your dash, or for a speed boost when you’re full.",
   "Dash into the Shift Snatcher to make it drop the cards it stole.",
-  "Employees on a break leak the water cooler and drop banana peels. Walk round them, or you’ll slip and drop your card.",
+  "When the water cooler leaks, the tray is flooded for a few seconds. Wait it out, or risk a slip.",
+  "Employees on a break drop banana peels. Walk round them, or you’ll slip and drop your card.",
   "Playing alone? Press Q to swap between the critters.",
   "Roster my team works for cafés, clinics, salons or anything with shifts.",
   "Scan the QR code and your phones become the controllers. Up to four can play.",
@@ -913,7 +914,7 @@ function Game() {
                   <li><span aria-hidden="true">🗑️</span><b>Cancelled</b><small>Pull the red card off the board and feed it to the Shredder. A yellow open shift appears.</small></li>
                   <li><span aria-hidden="true">🟡</span><b>Open shift</b><small>It’s for one employee: their bubble flashes. Chase them down, hand it over, then pin it.</small></li>
                   <li><span aria-hidden="true">🐔</span><b>Shift Snatcher</b><small>The bin chicken nicks pinned cards. Dash into it to make it drop them.</small></li>
-                  <li><span aria-hidden="true">🍌</span><b>Slippery office</b><small>Employees on a break leak the water cooler and drop banana peels. Step in them and you slip and drop your card.</small></li>
+                  <li><span aria-hidden="true">🍌</span><b>Slippery office</b><small>The leaking water cooler floods round the tray, and employees drop banana peels. Step in either and you slip and drop your card.</small></li>
                   <li><span aria-hidden="true">⚡</span><b>Dash charges</b><small>Grab ⚡ to recharge your dash, or for a speed boost when you’re full. A wobbling card is about to be cancelled.</small></li>
                 </ol>
                 <table className="how-table">

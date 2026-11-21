@@ -5,7 +5,7 @@
  * the helpers move those request cards through the system: the Request Tray (inbox), the Manager's Desk
  * (approval stamp), across the counter, onto the Roster Board. Cancellations, open shifts that need cover
  * from the wandering employee they are for, and a card-stealing Shift Snatcher keep un-filling the week.
- * Employees on a break make the floor slippery too: a leaking water cooler and dropped banana peels.
+ * Employees on a break make the floor slippery too: the water cooler leaks all round the tray, and banana peels.
  *
  * Everything the UI and the 3D office need lives in `Round`. One-off moments (a pin, a "nope", a snatch)
  * are pushed onto `round.fx` so the renderer and sound can react without diffing state.
@@ -244,10 +244,15 @@ export const settings = {
   errandGiveUp: 22,
   drinkTime: 2.2,
   snackTime: 2.4,
-  /** The cooler's puddle: full size, seconds to spread, seconds before it dries up. */
-  puddleRadius: 1.3,
-  puddleGrow: 3,
-  puddleLasts: 22,
+  /**
+   * The cooler's flood rings the whole Request Tray, so any way in is slippery. `spillReach` is how far it spreads
+   * past the tray's edges (players use the tray from up to `stationReach` away). It spreads in `puddleGrow` seconds,
+   * lasts `puddleLasts` in all, and shrinks back to the tray over its last `puddleDry` seconds.
+   */
+  spillReach: 1.35,
+  puddleGrow: 1.5,
+  puddleLasts: 9,
+  puddleDry: 2,
   peelLasts: 35,
   peelRadius: .45,
   /** A slip: seconds on the floor, how fast you slide, and seconds after getting up before you can slip again. */
@@ -292,8 +297,6 @@ export const office = {
   /** Where an employee stands to drink from the water cooler, and the open floor they walk via to get round the tray. */
   coolerSpot: { x: -10.55, z: 5.6 },
   coolerWay: { x: -10.6, z: 1.5 },
-  /** Where the leaking cooler's puddle spreads: on the open floor beside the Request Tray. */
-  puddle: { x: -9.1, z: 2.75 },
 };
 
 /** A solid piece of furniture: centre plus full width (x) and depth (z). */
@@ -450,7 +453,7 @@ export type Bolt = { id: number; point: Point; born: number };
 /** An employee's break. While `going`, `until` is when they give up on the walk; while `busy`, when they finish. */
 export type Errand = { kind: "water" | "banana"; stage: "going" | "busy"; until: number };
 
-/** Something slippery on the floor. A puddle spreads and dries up; a peel stays until someone slips on it. */
+/** Something slippery on the floor. The flood rings the Request Tray and dries up; a peel stays until someone slips on it. */
 export type Hazard = { id: number; kind: "puddle" | "peel"; point: Point; born: number; until: number };
 
 /** What each critter did this round, for the awards on the end screen and the phones. */
@@ -989,11 +992,12 @@ function finishBreak(round: Round, npc: Wanderer) {
   round.nextErrand = round.elapsed + settings.errandEvery[round.stage];
 }
 
-/** The cooler springs a leak: a puddle spreads on the floor beside the Request Tray. */
+/** The cooler springs a leak: water floods all the way round the Request Tray. */
 function leak(round: Round) {
   round.hazards = round.hazards.filter(hazard => hazard.kind !== "puddle");
-  round.hazards.push({ id: ++round.fxSeq, kind: "puddle", point: { ...office.puddle }, born: round.elapsed, until: round.elapsed + settings.puddleLasts });
-  announce(round, "The water cooler is leaking! Mind the puddle by the tray.");
+  const point = { x: furniture.inbox.x, z: furniture.inbox.z };
+  round.hazards.push({ id: ++round.fxSeq, kind: "puddle", point, born: round.elapsed, until: round.elapsed + settings.puddleLasts });
+  announce(round, "The water cooler is leaking! The tray's surrounded by water.");
   fx(round, "leak", furniture.cooler);
 }
 
@@ -1004,20 +1008,27 @@ function dropPeel(round: Round, npc: Wanderer) {
   fx(round, "peel", point);
 }
 
-/** How far a hazard reaches right now: a puddle spreads quickly, then shrinks as it dries. */
+/**
+ * How far a hazard reaches right now. A peel is a circle of `peelRadius`. The flood reaches this far out from the
+ * edges of the Request Tray: it spreads quickly, then shrinks back as it dries.
+ */
 export function hazardRadius(round: Round, hazard: Hazard) {
   if (hazard.kind === "peel") return settings.peelRadius;
   const spread = Math.min(1, Math.max(0, (round.elapsed - hazard.born) / settings.puddleGrow));
-  const drying = Math.min(1, Math.max(0, (hazard.until - round.elapsed) / 3));
-  return settings.puddleRadius * Math.sqrt(spread) * drying;
+  const drying = Math.min(1, Math.max(0, (hazard.until - round.elapsed) / settings.puddleDry));
+  return settings.spillReach * Math.sqrt(spread) * drying;
 }
 
 /** Whether a player is on the floor after slipping. */
 export const isFallen = (round: Round, index: number) => round.elapsed < (round.players[index]?.fallenUntil ?? 0);
 
 function hazardUnder(round: Round, point: Point) {
-  return round.hazards.find(hazard => round.elapsed < hazard.until
-    && Math.hypot(point.x - hazard.point.x, point.z - hazard.point.z) < hazardRadius(round, hazard) * (hazard.kind === "puddle" ? .85 : 1));
+  return round.hazards.find(hazard => {
+    if (round.elapsed >= hazard.until) return false;
+    // The flood is drawn a touch bigger than its slippery part, so its edge is fair
+    if (hazard.kind === "puddle") return edgeDistance(point, furniture.inbox) < hazardRadius(round, hazard) * .9;
+    return Math.hypot(point.x - hazard.point.x, point.z - hazard.point.z) < hazardRadius(round, hazard);
+  });
 }
 
 /** Down they go: they slide, drop what they carry a little way ahead, and lie there for a moment. */

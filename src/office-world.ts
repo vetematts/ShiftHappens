@@ -856,20 +856,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     const brim = parts.add(head, new T.Mesh(cylinderGeometry, hat), 0, .15, .2, .2, .025, .15);
     crown.castShadow = brim.castShadow = true;
     const feet = [-1, 1].map(side => ball(body, 0x7a6a8c, side * .14, .06, .08, .1, .055, .14));
-    // What they hold on a break: a cup of water, or a banana
+    // The cup of water they drink on a break
     const cup = new T.Group();
     cup.position.set(.24, .58, .28);
     body.add(cup);
     cylinder(cup, colours.white, 0, 0, 0, .08, .18);
     cylinder(cup, 0x8fd6ff, 0, .085, 0, .066, .014);
     cup.visible = false;
-    const banana = new T.Group();
-    banana.position.set(.26, .62, .26);
-    banana.rotation.z = .55;
-    body.add(banana);
-    parts.capsule(banana, 0xffd84d, 0, 0, 0, .065, .13, .065);
-    ball(banana, 0x6b4a2b, 0, .21, 0, .026, .032, .026);
-    banana.visible = false;
     const tagSurface = new T.SpriteMaterial({ depthTest: false, depthWrite: false });
     ownMaterials.push(tagSurface);
     const tag = new T.Sprite(tagSurface);
@@ -893,7 +886,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     root.add(beam);
     root.visible = false;
     scene.add(root);
-    return { root, body, head, tag, ring, beam, feet, cup, banana, skin, hat, key: "", bubble: "", born: -10, popped: -10, facing: 0, phase: 0 };
+    return { root, body, head, tag, ring, beam, feet, cup, skin, hat, key: "", bubble: "", born: -10, popped: -10, facing: 0, phase: 0 };
   }
   const crew = new Map<number, ReturnType<typeof makeCrew>>();
   const bubbleTextures = new Map<string, T.Texture>();
@@ -1189,7 +1182,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   // Floating words
   const words = {
     leak: sign("Leak!", "#8fd6ff"),
-    peel: sign("Banana!", "#ffe066"),
     slip: sign("Whoops!", "#ffb3c2"),
     stamp: sign("Stamped!", "#5fe39a"),
     pin: sign("Rostered!", "#ffd35c"),
@@ -1438,7 +1430,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(confetti, at, 12, { colours: [0x5fe39a, 0xffffff, 0xffd35c], speed: 1.8, up: 3, gravity: 8, life: .9, size: .8 });
         popup("stamp", office.desk.x + .3, 3.0, office.desk.z, .95);
         if (mine) mine.popped = now;
-        shake = Math.max(shake, .08);
         break;
       }
       case "pin": {
@@ -1448,7 +1439,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(confetti, { x: spot.x, y: spot.y, z: boardZ + .3 }, 26, { colours: confettiColours, speed: 2.4, up: 3.2, gravity: 7, life: 1.2, size: 1 });
         popup("pin", spot.x, 1.0, office.boardZ + .9, .9);
         if (mine) mine.popped = now;
-        shake = Math.max(shake, .12);
         break;
       }
       case "nope":
@@ -1462,7 +1452,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(puffs, { x: spot.x, y: spot.y, z: boardZ + .3 }, 10, { colours: [0xff6b6b, 0xfff6e6], speed: 1.3, up: .8, gravity: 0, life: .7, size: .9 });
         popup("cancel", spot.x, 1.0, office.boardZ + .9, 1);
         ringUntil = now + 1.6;
-        shake = Math.max(shake, .1);
         break;
       }
       case "shred":
@@ -1489,12 +1478,12 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         break;
       }
       case "snatch":
-        shake = Math.max(shake, .26);
+        shake = Math.max(shake, .18);
         popup("snatch", x, 1.0, Math.max(z, office.boardZ + .9), 1.15);
         emit(puffs, { x, y: 1, z }, 8, { colours: [0xfffdf8, 0xff8fb0], speed: 1.4, up: .8, gravity: 0, life: .6, size: .9 });
         break;
       case "knock":
-        shake = Math.max(shake, .2);
+        shake = Math.max(shake, .12);
         squash(event.player, 6);
         emit(confetti, { x, y: 1.6, z }, 12, { colours: starColours, speed: 1.9, up: 3.2, gravity: 6, life: 1, size: .9 });
         break;
@@ -1535,14 +1524,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       case "leak":
         popup("leak", furniture.cooler.x + .7, 2.5, furniture.cooler.z, .9);
         emit(puffs, { x: furniture.cooler.x + .3, y: .5, z: furniture.cooler.z - .2 }, 10, { colours: [0x8fd6ff, 0xffffff], speed: 1.2, up: .6, gravity: 0, life: .7, size: .9 });
-        shake = Math.max(shake, .06);
-        break;
-      case "peel":
-        popup("peel", x, 2.1, z, .75);
-        emit(puffs, { x, y: .3, z }, 6, { colours: [0xffe066, 0xfff6e6], speed: .8, up: .5, gravity: 0, life: .5, size: .8 });
         break;
       case "slip":
-        shake = Math.max(shake, .16);
         squash(event.player, -6);
         popup("slip", x, 2.6, z, .9);
         emit(confetti, { x, y: 1.3, z }, 10, { colours: starColours, speed: 1.6, up: 2.6, gravity: 6, life: .9, size: .8 });
@@ -1551,7 +1534,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       case "busy":
         break;
       case "chaos":
-        shake = Math.max(shake, .15);
+        shake = Math.max(shake, .12);
         break;
       case "win":
         for (let i = 0; i < 7; i++) {
@@ -1731,15 +1714,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       member.body.position.y = still ? 0 : walking ? Math.abs(Math.sin(step)) * .09 : Math.max(0, Math.sin(now * 2.4 + npc.id * 2)) * .05;
       member.body.rotation.z = walking && !still ? Math.sin(step) * .12 : 0;
       member.head.rotation.z = still ? 0 : Math.sin(now * 2 + npc.id) * .06;
-      const errand = npc.errand;
-      const busy = errand?.stage === "busy" && round.phase === "playing";
-      member.head.rotation.x = busy && !still ? (errand.kind === "water" ? -.35 + Math.sin(now * 3) * .05 : Math.sin(now * 12) * .12) : 0;
-      member.cup.visible = errand?.kind === "water" && errand.stage === "busy";
-      member.banana.visible = errand?.kind === "banana";
-      if (member.banana.visible) {
-        const left = Math.max(.25, (errand!.until - round.elapsed) / settings.snackTime);
-        member.banana.scale.set(1, left, 1);
-      }
+      // Drinking at the cooler tips the head back
+      const drinking = npc.errand?.stage === "busy" && round.phase === "playing";
+      member.head.rotation.x = drinking && !still ? -.35 + Math.sin(now * 3) * .05 : 0;
+      member.cup.visible = npc.errand?.stage === "busy";
       member.feet.forEach((foot, side) => {
         const swing = walking ? Math.sin(step + side * Math.PI) : 0;
         foot.position.z = .08 + swing * .12;
@@ -1889,7 +1867,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     });
   }
 
-  // The cooler's flood round the Request Tray, and banana peels on the floor. The water doesn't write depth and is
+  // The cooler's flood round the Request Tray. The water doesn't write depth and is
   // layered by render order (rim, then water, then glints), so it always sits on the floor and under anything on it.
   const puddleSurface = new T.MeshStandardMaterial({ color: 0x5cb8ff, roughness: .05, metalness: .05, depthWrite: false });
   const puddleRim = new T.MeshBasicMaterial({ color: 0x3a8fe0, depthWrite: false, toneMapped: false });
@@ -1972,21 +1950,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       glint.rotation.z = i === 2 ? Math.PI / 2 : 0;
     });
   }
-  function makePeel() {
-    const group = new T.Group();
-    for (let i = 0; i < 3; i++) {
-      const flap = new T.Group();
-      flap.rotation.y = i * 2.1 + .3;
-      group.add(flap);
-      const piece = parts.capsule(flap, 0xffd84d, 0, .05, .2, .075, .12, .035);
-      piece.rotation.x = Math.PI / 2;
-      ball(flap, 0x8a6a2b, 0, .06, .36, .03, .025, .03);
-    }
-    ball(group, 0xffe58a, 0, .1, 0, .13, .08, .13);
-    ball(group, 0x6b4a2b, 0, .17, 0, .03, .045, .03);
-    scene.add(group);
-    return group;
-  }
   // A stream of water from the cooler into the flood
   const trickle = new T.Group();
   scene.add(trickle);
@@ -1994,8 +1957,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   trickle.visible = false;
   const streamFrom = { x: furniture.cooler.x + .25, z: furniture.cooler.z - .25 };
   const streamTo = { x: furniture.inbox.x - furniture.inbox.w / 2, z: furniture.inbox.z + furniture.inbox.d / 2 };
-  type HazardObject = { group: T.Group; flood?: ReturnType<typeof makeFlood>; born: number };
-  const hazardObjects = new Map<number, HazardObject>();
+  const hazardObjects = new Map<number, ReturnType<typeof makeFlood>>();
   let dripAt = 0;
 
   function placeHazards(round: Round, now: number) {
@@ -2004,24 +1966,14 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     let puddle: Hazard | undefined;
     for (const hazard of round.hazards) {
       present.add(hazard.id);
-      let entry = hazardObjects.get(hazard.id);
-      if (!entry) {
-        if (hazard.kind === "puddle") {
-          const flood = makeFlood();
-          entry = { group: flood.group, flood, born: now };
-        } else {
-          entry = { group: makePeel(), born: now };
-        }
-        hazardObjects.set(hazard.id, entry);
+      let flood = hazardObjects.get(hazard.id);
+      if (!flood) {
+        flood = makeFlood();
+        hazardObjects.set(hazard.id, flood);
       }
-      entry.group.position.set(hazard.point.x, 0, hazard.point.z);
-      if (entry.flood) {
-        puddle = hazard;
-        placeFlood(entry.flood, hazardRadius(round, hazard), now, still);
-      } else {
-        const pop = Math.min(1, (now - entry.born) / .35);
-        entry.group.scale.setScalar(1.6 * Math.max(.001, easeBack(pop)));
-      }
+      flood.group.position.set(hazard.point.x, 0, hazard.point.z);
+      puddle = hazard;
+      placeFlood(flood, hazardRadius(round, hazard), now, still);
     }
     for (const [id, entry] of hazardObjects) {
       if (present.has(id)) continue;
@@ -2230,9 +2182,11 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     pan += (follow - pan) * (1 - Math.exp(-dt * 4));
     camera.position.copy(basePosition);
     camera.position.x += pan;
+    // Only big moments (the Snatcher, knocking it, Chaos) shake the room, and as a short smooth wobble rather than
+    // random jitter, so busy rounds with lots of stamping and slipping don't make the whole picture jump about
     if (shake > 0 && !still) {
-      camera.position.x += (Math.random() - .5) * shake;
-      camera.position.y += (Math.random() - .5) * shake;
+      camera.position.x += Math.sin(now * 38) * shake * .5;
+      camera.position.y += Math.cos(now * 31) * shake * .35;
     }
     shake = Math.max(0, shake - dt * .9);
     render();

@@ -5,7 +5,7 @@
  * the helpers move those request cards through the system: the Request Tray (inbox), the Manager's Desk
  * (approval stamp), across the counter, onto the Roster Board. Cancellations, open shifts that need cover
  * from the wandering employee they are for, and a card-stealing Shift Snatcher keep un-filling the week.
- * Employees on a break make the floor slippery too: the water cooler leaks all round the tray, and banana peels.
+ * Employees on a break make the floor slippery too: the water cooler leaks all round the tray.
  *
  * Everything the UI and the 3D office need lives in `Round`. One-off moments (a pin, a "nope", a snatch)
  * are pushed onto `round.fx` so the renderer and sound can react without diffing state.
@@ -234,16 +234,15 @@ export const settings = {
   staffBody: .38,
   crowdReach: 1.15,
   crowdSpeed: .65,
-  /** Breaks: one employee at a time pops to the water cooler (which leaks) or eats a banana (and drops the peel). */
+  /** Breaks: one employee at a time pops to the water cooler for a drink, and it leaks. */
   firstErrand: 14,
-  /** Seconds between one break ending and the next starting. */
-  errandEvery: { calm: 9, busy: 6, chaos: 3.5 } as Record<Stage, number>,
+  /** Seconds between one break ending and the next starting (about five leaks a round). */
+  errandEvery: { calm: 20, busy: 15, chaos: 10 } as Record<Stage, number>,
   /** Employees hurry to the cooler, this many times their strolling speed. */
   errandPace: 1.8,
   /** A walk to the cooler that takes longer than this is abandoned. */
   errandGiveUp: 22,
   drinkTime: 2.2,
-  snackTime: 2.4,
   /**
    * The cooler's flood rings the whole Request Tray, so any way in is slippery. `spillReach` is how far it spreads
    * past the tray's edges (players use the tray from up to `stationReach` away). It spreads in `puddleGrow` seconds,
@@ -253,8 +252,6 @@ export const settings = {
   puddleGrow: 1.5,
   puddleLasts: 9,
   puddleDry: 2,
-  peelLasts: 35,
-  peelRadius: .45,
   /** A slip: seconds on the floor, how fast you slide, and seconds after getting up before you can slip again. */
   slipTime: 1.15,
   slipSlide: 5,
@@ -450,11 +447,11 @@ export type Player = {
 /** A ⚡ lying on the floor. Walk over it to pick it up. */
 export type Bolt = { id: number; point: Point; born: number };
 
-/** An employee's break. While `going`, `until` is when they give up on the walk; while `busy`, when they finish. */
-export type Errand = { kind: "water" | "banana"; stage: "going" | "busy"; until: number };
+/** An employee's trip to the water cooler. While `going`, `until` is when they give up on the walk; while `busy` (drinking), when they finish. */
+export type Errand = { stage: "going" | "busy"; until: number };
 
-/** Something slippery on the floor. The flood rings the Request Tray and dries up; a peel stays until someone slips on it. */
-export type Hazard = { id: number; kind: "puddle" | "peel"; point: Point; born: number; until: number };
+/** Something slippery on the floor: the cooler's flood round the Request Tray, which spreads and dries up. */
+export type Hazard = { id: number; kind: "puddle"; point: Point; born: number; until: number };
 
 /** What each critter did this round, for the awards on the end screen and the phones. */
 export type Stats = { pinned: number; stamped: number; passed: number; shredded: number; accepted: number; rescues: number; slips: number };
@@ -463,7 +460,7 @@ const noStats = (): Stats => ({ pinned: 0, stamped: 0, passed: 0, shredded: 0, a
 export type FxKind =
   | "spawn" | "pick" | "put" | "stamp" | "pin" | "nope" | "cancel" | "shred" | "open" | "accept"
   | "snatch" | "knock" | "rescue" | "escape" | "dash" | "busy" | "chaos" | "win" | "lose"
-  | "warn" | "bolt" | "charge" | "boost" | "leak" | "peel" | "slip";
+  | "warn" | "bolt" | "charge" | "boost" | "leak" | "slip";
 
 /** A one-off moment for the renderer and sound. `id` only ever increases within a round. */
 export type Fx = { id: number; kind: FxKind; x: number; z: number; player?: number; card?: number };
@@ -988,28 +985,22 @@ function sidestep(npc: Wanderer, free: (next: Point) => boolean): Point | undefi
   return undefined;
 }
 
-/** One employee at a time takes a break: the one nearest the cooler goes for a drink, or someone eats a banana. */
+/** One employee at a time takes a break: whoever is nearest the water cooler goes for a drink. */
 function startBreak(round: Round) {
   const people = wanderers(round);
-  if (!people.length || people.some(npc => npc.errand)) return false;
-  const wet = round.hazards.some(hazard => hazard.kind === "puddle");
+  // Not while someone's already on a break, or while the last flood is still drying
+  if (!people.length || people.some(npc => npc.errand) || round.hazards.length) return false;
   round.breaks++;
-  if (!wet && round.breaks % 2 === 1) {
-    const reach = (npc: Wanderer) => pathLength(npc.point, coolerPath(npc.point));
-    const npc = people.reduce((best, next) => (reach(next) < reach(best) ? next : best));
-    npc.errand = { kind: "water", stage: "going", until: round.elapsed + settings.errandGiveUp };
-    npc.path = coolerPath(npc.point);
-    npc.waitUntil = 0;
-    npc.stuck = 0;
-    return true;
-  }
-  // A banana: they stop where they are, eat it, and leave the peel behind
-  const npc = people[Math.floor(Math.random() * people.length)];
-  npc.errand = { kind: "banana", stage: "busy", until: round.elapsed + settings.snackTime };
+  const reach = (npc: Wanderer) => pathLength(npc.point, coolerPath(npc.point));
+  const npc = people.reduce((best, next) => (reach(next) < reach(best) ? next : best));
+  npc.errand = { stage: "going", until: round.elapsed + settings.errandGiveUp };
+  npc.path = coolerPath(npc.point);
+  npc.waitUntil = 0;
+  npc.stuck = 0;
   return true;
 }
 
-/** Moves an employee's break along. Returns true while they are stood still drinking or eating. */
+/** Moves an employee's break along. Returns true while they are stood at the cooler drinking. */
 function stepBreak(round: Round, npc: Wanderer) {
   const errand = npc.errand;
   if (!errand) return false;
@@ -1019,15 +1010,14 @@ function stepBreak(round: Round, npc: Wanderer) {
     return false;
   }
   if (round.elapsed < errand.until) return true;
-  if (errand.kind === "water") leak(round);
-  else dropPeel(round, npc);
+  leak(round);
   finishBreak(round, npc);
   return true;
 }
 
 function finishBreak(round: Round, npc: Wanderer) {
   // From the cooler, back out the way they came so the tray doesn't box them into the corner
-  const out = npc.errand?.kind === "water" && npc.errand.stage === "busy" ? office.coolerWay : undefined;
+  const out = npc.errand?.stage === "busy" ? office.coolerWay : undefined;
   npc.errand = undefined;
   npc.path = out ? [{ ...out }, ...routeTo(out, farSpot(out))] : routeTo(npc.point, farSpot(npc.point));
   npc.stuck = 0;
@@ -1043,19 +1033,11 @@ function leak(round: Round) {
   fx(round, "leak", furniture.cooler);
 }
 
-function dropPeel(round: Round, npc: Wanderer) {
-  const point = { ...npc.point };
-  round.hazards.push({ id: ++round.fxSeq, kind: "peel", point, born: round.elapsed, until: round.elapsed + settings.peelLasts });
-  announce(round, `${nameOf(round, npc.person)} dropped a banana peel! Don't slip.`);
-  fx(round, "peel", point);
-}
-
 /**
- * How far a hazard reaches right now. A peel is a circle of `peelRadius`. The flood reaches this far out from the
- * edges of the Request Tray: it spreads quickly, then shrinks back as it dries.
+ * How far the flood reaches right now, out from the edges of the Request Tray: it spreads quickly, then shrinks back
+ * as it dries.
  */
 export function hazardRadius(round: Round, hazard: Hazard) {
-  if (hazard.kind === "peel") return settings.peelRadius;
   const spread = Math.min(1, Math.max(0, (round.elapsed - hazard.born) / settings.puddleGrow));
   const drying = Math.min(1, Math.max(0, (hazard.until - round.elapsed) / settings.puddleDry));
   return settings.spillReach * Math.sqrt(spread) * drying;
@@ -1065,16 +1047,13 @@ export function hazardRadius(round: Round, hazard: Hazard) {
 export const isFallen = (round: Round, index: number) => round.elapsed < (round.players[index]?.fallenUntil ?? 0);
 
 function hazardUnder(round: Round, point: Point) {
-  return round.hazards.find(hazard => {
-    if (round.elapsed >= hazard.until) return false;
-    // The flood is drawn a touch bigger than its slippery part, so its edge is fair
-    if (hazard.kind === "puddle") return edgeDistance(point, furniture.inbox) < hazardRadius(round, hazard) * .9;
-    return Math.hypot(point.x - hazard.point.x, point.z - hazard.point.z) < hazardRadius(round, hazard);
-  });
+  // The flood is drawn a touch bigger than its slippery part, so its edge is fair
+  return round.hazards.find(hazard => round.elapsed < hazard.until
+    && edgeDistance(point, furniture.inbox) < hazardRadius(round, hazard) * .9);
 }
 
 /** Down they go: they slide, drop what they carry a little way ahead, and lie there for a moment. */
-function slip(round: Round, index: number, hazard: Hazard) {
+function slip(round: Round, index: number) {
   const player = round.players[index];
   stopStamp(round, index);
   const speed = settings.slipSlide * (isDashing(round, index) ? 1.4 : 1);
@@ -1086,22 +1065,21 @@ function slip(round: Round, index: number, hazard: Hazard) {
     const ahead = { x: player.position.x + Math.sin(player.facing) * 1.1, z: player.position.z + Math.cos(player.facing) * 1.1 };
     release(round, index, { place: "floor", point: walkable(ahead) ? ahead : { ...player.position } });
   }
-  if (hazard.kind === "peel") hazard.until = round.elapsed;
   round.stats[index].slips++;
-  notify(round, player, hazard.kind === "peel" ? "Banana peel! Whoops!" : "Slipped in the puddle!");
+  notify(round, player, "Slipped in the puddle!");
   fx(round, "slip", player.position, { player: index });
 }
 
 function stepHazards(round: Round) {
   if (round.elapsed >= round.nextErrand) round.nextErrand = startBreak(round) ? Infinity : round.elapsed + 1;
-  // Puddles dry up and used peels get swept away
+  // The flood dries up
   round.hazards = round.hazards.filter(hazard => round.elapsed < hazard.until);
   // Walking or dashing through something slippery knocks you over; standing still in it is fine
   round.players.forEach((player, i) => {
     if (isFallen(round, i) || round.elapsed < player.steadyUntil) return;
     if (!player.moving && !isDashing(round, i)) return;
     const hazard = hazardUnder(round, player.position);
-    if (hazard) slip(round, i, hazard);
+    if (hazard) slip(round, i);
   });
 }
 
@@ -1228,24 +1206,6 @@ function stepSnatcher(round: Round, seconds: number) {
         chicken.card = undefined;
         round.stats[knocker].rescues++;
         fx(round, "rescue", chicken.point, { player: knocker, card: card.id });
-      }
-      return;
-    }
-  }
-
-  // It slips on banana peels too, dropping whatever it stole
-  if (chicken.state !== "dazed") {
-    const peel = round.hazards.find(hazard => hazard.kind === "peel" && round.elapsed < hazard.until
-      && Math.hypot(hazard.point.x - chicken.point.x, hazard.point.z - chicken.point.z) <= settings.peelRadius + .15);
-    if (peel) {
-      peel.until = round.elapsed;
-      chicken.state = "dazed";
-      chicken.dazedUntil = round.elapsed + settings.snatcherDaze * 1.6;
-      fx(round, "slip", chicken.point);
-      if (chicken.card !== undefined) {
-        round.cards[chicken.card].at = { place: "floor", point: { x: chicken.point.x, z: Math.max(chicken.point.z, office.boardZ + .9) } };
-        chicken.card = undefined;
-        announce(round, "The Snatcher slipped on a banana peel and dropped the card! Grab it!");
       }
       return;
     }

@@ -117,6 +117,11 @@ const clicked = await evaluate(`(() => {
   return true;
 })()`);
 console.log("clicked quick play:", clicked);
+// Starting from the menu shows the rules first; Enter skips them to the countdown
+await sleep(1500);
+await shot("1b-rules");
+console.log("rules text:", await text());
+await hold("Enter", 60);
 await sleep(1200);
 await shot("2a-countdown");
 await sleep(3500);

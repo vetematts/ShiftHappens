@@ -15,7 +15,9 @@ import type { Stats } from "./round";
 /** What a phone sends: where its stick points, whether the action button is held, and requests to start a round. */
 export type PhoneMessage =
   | { t: "input"; x: number; y: number; act: boolean; dash: boolean }
-  | { t: "start" };
+  | { t: "start" }
+  /** "I'm ready" while the rules are showing before a round. */
+  | { t: "ready" };
 
 /** What the laptop sends back: which critter the phone controls, and what that critter is doing. */
 export type HostMessage =
@@ -41,6 +43,10 @@ export type HostMessage =
     news: string;
     /** Seconds left in the 3-2-1 countdown before a round starts, or 0. */
     countdown?: number;
+    /** Seconds left on the rules screen before the countdown, or 0 when it isn't showing. */
+    briefing?: number;
+    /** Whether this phone has said it's ready on the rules screen. */
+    ready?: boolean;
     /** This critter's tallies this round, for the results on the phone. */
     stats?: Stats;
     /** Award titles this critter won, once the round has ended. */

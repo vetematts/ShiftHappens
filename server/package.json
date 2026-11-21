@@ -1,0 +1,16 @@
+{
+  "name": "shift-happens-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Passes messages between the Shift Happens laptop and phones on networks that block direct connections.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node relay.mjs"
+  },
+  "dependencies": {
+    "ws": "8.23.0"
+  }
+}

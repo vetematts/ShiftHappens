@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
-import { cardColours, critters, openLink, type HostMessage, type Link } from "./phone-link";
+import { cardColours, critters, openLink, relayUrl, type HostMessage, type Link } from "./phone-link";
 import { days } from "./round";
 
 const kindNames = { request: "Request", open: "Open shift", cancelled: "Cancelled" };
@@ -166,9 +166,9 @@ export default function PhoneController({ code, local }: { code: string; local: 
       {connection !== "connected" || seat === null ? (
         <section className="gp-wait">
           {connection === "lost" ? (
-            <><h1>Lost the laptop</h1><p>Check you’re on the same Wi-Fi as the laptop, then reload this page.</p></>
+            <><h1>Lost the laptop</h1><p>Check this phone has internet (the same Wi-Fi as the laptop works best), then reload this page.</p></>
           ) : (
-            <><h1>Joining room {code}…</h1><p>Keep the game open on the laptop. This can take a few seconds.</p></>
+            <><h1>Joining room {code}…</h1><p>Keep the game open on the laptop. This can take a few seconds{relayUrl() ? ", or up to a minute if the relay server is waking up" : ""}.</p></>
           )}
         </section>
       ) : seat < 0 ? (

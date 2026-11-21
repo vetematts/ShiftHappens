@@ -54,7 +54,23 @@ A fifth phone waits and takes over a critter as soon as a phone leaves. If a pho
 
 **How it works.** There is no game server. The QR code opens the same GitHub Pages site with the room in the address (`#join-ABCD`). The laptop and phones find each other through public Nostr relays using [Trystero](https://github.com/dmotz/trystero), then talk directly over WebRTC. The laptop runs the whole game. Phones send their stick and button about 20 times a second, and the laptop sends each phone its critter's status 5 times a second. The game contacts the relays only after someone selects the **Phones** tile.
 
-**Before a demo.** Test on the real Wi-Fi with real phones. Some venue and mobile networks block direct connections. If a phone stays on *Joining room…*, put the phones on the same Wi-Fi as the laptop or fall back to the keyboard.
+**Before a demo.** Test on the real Wi-Fi with real phones. Some venue and mobile networks block direct connections. If a phone stays on *Joining room…*, use the relay server below, put everything on one phone's hotspot, or fall back to the keyboard.
+
+### Guest Wi-Fi? Use the relay server
+
+Guest and venue networks often stop phones and the laptop connecting to each other. The relay in `server/relay.mjs` fixes that: everyone connects out to it (like visiting any website) and it passes the messages along. It keeps no game state, and if a connection drops, phones reconnect on their own and keep their seats.
+
+Put it online once, free, on [Render](https://render.com):
+
+1. Sign in to Render and choose **New → Web Service → Public Git Repository**, then paste `https://github.com/vetematts/ShiftHappens`.
+2. Set **Root Directory** to `server`, **Build Command** to `npm install`, **Start Command** to `npm start`, **Region** to Singapore (closest to Brisbane) and **Instance Type** to Free. Create it.
+3. When it says **Live**, open its address (for example `https://shift-happens-relay.onrender.com`). It should say *Shift Happens relay is awake*.
+
+Then open the game with the relay's host name added, for example `https://vetematts.github.io/ShiftHappens/?relay=shift-happens-relay.onrender.com`, and select **Phones**. The menu says *via relay server*, and the QR code and join link carry the relay along, so phones use it too.
+
+On demo day, open the relay's address about five minutes early: a free Render service sleeps after 15 idle minutes and takes about a minute to wake. Leave the game open on the laptop and it stays awake.
+
+To try the relay on one computer: `cd server && npm install && npm start`, then add `?relay=ws://localhost:8787` to the game's address.
 
 **Testing without phones.** Add `?link=local` to the laptop's address and select the **Phones** tile. Then open `index.html#join-CODE-local` in other tabs of the same browser, with the room code in place of `CODE`. The tabs talk through the browser instead of the network.
 
@@ -83,7 +99,8 @@ React and Vite for the page, Three.js for the 3D office, [Fredoka](https://fonts
 | `src/office-world.ts` | The Three.js office, critters, cards, staff, the Snatcher, board and effects |
 | `src/shift-happens.tsx` | The game screen: input, HUD, menu, how to play, results, and the phone lobby |
 | `src/team-setup.tsx` | The **Roster my team** steps: business, roles and shifts, team, week. Saved in the browser |
-| `src/phone-link.ts` | Room codes, join links and the peer-to-peer link for phones |
+| `src/phone-link.ts` | Room codes, join links and the links to phones: peer-to-peer, through the relay, or same-browser |
+| `server/relay.mjs` | The optional relay server for networks that block direct connections |
 | `src/phone-controller.tsx` | The gamepad a phone shows after scanning the QR code |
 | `src/play-qr.tsx` | QR codes |
 | `src/sound.ts` | Sound effects, synthesised in the browser |

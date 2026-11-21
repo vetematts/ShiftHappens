@@ -1060,7 +1060,7 @@ function Game() {
             ) : view.phase === "ready" ? (
               <div className="panel panel-menu">
                 <div className="logo"><span className="brand-tag">Shift</span><span className="brand-word">Happens!</span></div>
-                <p className="tagline">You’re helper critters inside the rostering system. Move every shift request through and pin the whole week before time runs out.</p>
+                <p className="tagline">You’re the rostering crew at Tanda HQ. Stamp, pass and pin shifts to finish a customer’s week before time runs out.</p>
                 <div className="count" role="group" aria-labelledby="count-label">
                   <p id="count-label" className="count-label">How many players?</p>
                   <div className="count-options">
@@ -1081,7 +1081,7 @@ function Game() {
                     <span className="count-touch">Everyone else joins on their own phone: tap Phones below and they scan the code.</span>
                   </p>
                 </div>
-                <BigButton tone="primary" icon="▶" title="Quick play" note={`Dental clinic · Mon–Fri · 2 minutes · ${players} players`} onClick={() => start("quick")} />
+                <BigButton tone="primary" icon="▶" title="Quick play" note={`Dental clinic roster · 2 minutes · ${players} players`} onClick={() => start("quick")} />
                 <BigButton tone="roster" icon="📋" title="Roster my team"
                   note={custom && savedKind ? `Continue your ${savedKind.label.toLowerCase()} week · ${team.people.length} people` : "Your staff and shifts in, a real roster out"}
                   onClick={() => setSetup(true)} />
@@ -1105,7 +1105,7 @@ function Game() {
               </div>
             ) : (
               <div className="panel panel-end">
-                <p className="kicker">{view.custom ? "Your week" : "Dental clinic"}</p>
+                <p className="kicker">{view.custom ? "Your week" : "Dental clinic roster"}</p>
                 <h2 className={view.phase === "won" ? "end-won" : "end-lost"}>
                   {view.phase === "won" ? `Fully rostered with ${clock(view.time)} to spare!` : `Understaffed: ${view.filled}/${view.needed}`}
                 </h2>

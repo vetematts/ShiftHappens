@@ -1,31 +1,11 @@
-import type { CSSProperties } from "react";
-import { cardColours, critters } from "./phone-link";
+import { critters } from "./phone-link";
+import { settings } from "./round";
 
 /** How long the rules show before the 3-2-1, unless the host or every phone says they're ready sooner. */
 export const briefSeconds = 15;
 
-/** A request card like the ones in the office: blue, with the day in big letters. */
-function Card({ kind = "request", day = "Mon", stamped = false }: { kind?: keyof typeof cardColours; day?: string; stamped?: boolean }) {
-  return (
-    <span className="brief-card" style={{ "--card": cardColours[kind] } as CSSProperties} data-stamped={stamped}>
-      <small>{kind === "cancelled" ? "Cancelled" : "Request"}</small>
-      <b>{day}</b>
-      {stamped && <i aria-hidden="true">✓</i>}
-    </span>
-  );
-}
-
-/** The week on the board, filling up one pinned card at a time. Slots this week doesn't need stay greyed out. */
-function Board({ open }: { open: boolean[] }) {
-  const count = open.filter(Boolean).length;
-  let next = 0;
-  return (
-    <span className="brief-board" aria-hidden="true">
-      {open.map((needed, i) => needed
-        ? <span key={i} style={{ "--n": (next++ * 3) % Math.max(1, count) } as CSSProperties} />
-        : <span key={i} data-closed="true" />)}
-    </span>
-  );
+function RequestCard({ approved = false }: { approved?: boolean }) {
+  return <span className="brief-card" data-approved={approved}>Mon AM{approved && <span>✓</span>}</span>;
 }
 
 /**
@@ -47,35 +27,50 @@ export function Briefing({ open, left, seats, ready, onGo }: {
   const shiftsToFill = open.filter(Boolean).length;
   return (
     <div className="brief" role="dialog" aria-modal="true" aria-labelledby="brief-title">
-      <h1 id="brief-title" className="brief-title">Roster everyone <em>now!!!</em></h1>
+      <div className="brief-sheet">
+        <header className="brief-header">
+          <h1 id="brief-title">Cover the week</h1>
+          <p>Fill <b>{shiftsToFill} shifts</b> in <b>{settings.duration / 60} minutes</b></p>
+        </header>
 
-      <ol className="brief-steps" aria-label="How a shift gets rostered">
-        <li><span className="brief-pic"><Card /></span><b>Grab</b></li>
-        <li className="brief-arrow" aria-hidden="true">➜</li>
-        <li><span className="brief-pic brief-pic--stamp"><Card stamped /><span className="brief-stamp" aria-hidden="true" /></span><b>Stamp</b></li>
-        <li className="brief-arrow" aria-hidden="true">➜</li>
-        <li><span className="brief-pic"><Board open={open} /></span><b>Pin</b></li>
-      </ol>
+        <ol className="brief-steps" aria-label="How a shift gets rostered">
+          <li>
+            <span className="brief-illustration" aria-hidden="true"><RequestCard /></span>
+            <b>Pick up</b><small>Take a request from the tray</small>
+          </li>
+          <li>
+            <span className="brief-illustration" aria-hidden="true"><RequestCard approved /></span>
+            <b>Stamp</b><small>Hold action at the manager’s desk</small>
+          </li>
+          <li className="brief-handoff">
+            <span className="brief-illustration" aria-hidden="true">
+              <span className="brief-duck">{critters[0].emoji}</span>
+              <span className="brief-counter"><RequestCard approved /> →</span>
+              <span className="brief-bunny">{critters[1].emoji}</span>
+            </span>
+            <b>Pass</b><small>Leave it on the counter for a teammate on the other side</small>
+          </li>
+          <li>
+            <span className="brief-illustration" aria-hidden="true">
+              <span className="brief-board">
+                {open.map((needed, i) => <span key={i} data-closed={!needed} />)}
+              </span>
+            </span>
+            <b>Pin</b><small>Match the shift on the roster board</small>
+          </li>
+        </ol>
 
-      <p className="brief-goal"><span aria-hidden="true">⏱️</span> Fill all <b>{shiftsToFill}</b> shifts in <b>2 minutes!</b></p>
-
-      <ul className="brief-watch" aria-label="Watch out for">
-        <li><span aria-hidden="true">🐔</span><b>Dash it!</b></li>
-        <li><span aria-hidden="true">💦</span><b>Don’t slip!</b></li>
-        <li><span className="brief-mini" aria-hidden="true"><Card kind="cancelled" day="Fri" /></span><b>Shred it!</b></li>
-      </ul>
-
-      <div className="brief-go">
-        <button type="button" className="btn btn-primary brief-button" onClick={onGo} autoFocus>Let’s go! <kbd>Enter</kbd></button>
-        <span className="brief-timer" role="timer" aria-label={`Starting in ${left} seconds`}>
-          <span className="brief-bar"><span style={{ animationDuration: `${briefSeconds}s` }} /></span>
-          <small>Starting in {left}</small>
-        </span>
-        {phones.length > 0 && (
-          <ul className="brief-ready" aria-label="Phones ready">
-            {phones.map(i => <li key={i} data-ready={ready[i]}><span aria-hidden="true">{critters[i].emoji}</span>{ready[i] ? "✓" : "…"}</li>)}
-          </ul>
-        )}
+        <div className="brief-go">
+          <button type="button" className="btn btn-primary brief-button" onClick={onGo} autoFocus>Let’s go <kbd>Enter</kbd></button>
+          <span className="brief-timer" role="timer" aria-label={`Starting in ${left} seconds`}>
+            Starts in {left}s
+          </span>
+          {phones.length > 0 && (
+            <ul className="brief-ready" aria-label="Phones ready">
+              {phones.map(i => <li key={i} data-ready={ready[i]}><span aria-hidden="true">{critters[i].emoji}</span>{ready[i] ? "✓" : "…"}</li>)}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

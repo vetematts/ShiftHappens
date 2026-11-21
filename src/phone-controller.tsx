@@ -193,11 +193,11 @@ export default function PhoneController({ code, local }: { code: string; local: 
         </section>
       ) : briefing > 0 ? (
         <section className="gp-brief" aria-live="polite">
-          <h1>Roster everyone <em>now!!!</em></h1>
+          <h1>Cover the week</h1>
           <p className="gp-brief-look"><span aria-hidden="true">👀</span> Look at the big screen</p>
           <ul className="gp-brief-keys" aria-label="Your controls">
             <li><span aria-hidden="true">🕹️</span><b>Stick: move</b></li>
-            <li><span className="gp-brief-action">Action</span><b>Grab · hold to stamp · pin</b></li>
+            <li><span className="gp-brief-action">Action</span><b>Pick up · hold to stamp · pass · pin</b></li>
             <li><span aria-hidden="true">⚡</span><b>Dash: bump the chicken</b></li>
           </ul>
           <button type="button" className="gp-start" data-ready={Boolean(status?.ready)} onClick={imReady} disabled={Boolean(status?.ready)}>

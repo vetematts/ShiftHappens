@@ -507,7 +507,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   });
   paintBoard(Array.from({ length: 14 }, () => true));
 
-  // Wall clock that follows the round timer, and a poster
+  // Wall clock that follows the round timer, and the office sign
   const clock = new T.Group();
   clock.position.set((boardWidth / 2 + roomX) / 2 + .1, 1.95, boardZ + .02);
   scene.add(clock);
@@ -533,26 +533,23 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   ball(clock, colours.black, 0, 0, .12, .05, .05, .03, false);
   const clockRim = clock.children[0] as T.Mesh;
 
-  const poster = new T.Group();
-  poster.position.set(-((boardWidth / 2 + roomX) / 2 + .1), 1.95, boardZ + .02);
-  poster.rotation.z = .05;
-  scene.add(poster);
-  rbox(poster, colours.white, 0, 0, 0, 1.25, 1.55, .04, .03);
-  face(poster, paint(256, 320, pen => {
-    pen.fillStyle = "#ffe7a3";
-    pen.fillRect(0, 0, 256, 320);
-    pen.fillStyle = "#ff6f8e";
-    pen.beginPath();
-    pen.moveTo(128, 205);
-    pen.bezierCurveTo(30, 140, 60, 50, 128, 105);
-    pen.bezierCurveTo(196, 50, 226, 140, 128, 205);
-    pen.fill();
-    pen.fillStyle = "#2a2433";
-    pen.font = font(900, 44);
+  const hqSign = new T.Group();
+  hqSign.position.set(-((boardWidth / 2 + roomX) / 2 + .1), 2.05, boardZ + .02);
+  scene.add(hqSign);
+  rbox(hqSign, colours.white, 0, 0, 0, 1.9, 1.24, .06, .04);
+  face(hqSign, paint(400, 256, pen => {
+    pen.fillStyle = "#163960";
+    pen.fillRect(0, 0, 400, 256);
+    pen.fillStyle = "#a8e6ff";
+    pen.fillRect(0, 0, 400, 16);
     pen.textAlign = "center";
-    pen.fillText("TEAM", 128, 255);
-    pen.fillText("WORK", 128, 298);
-  }), 0, 0, .025, 1.13, 1.43);
+    pen.fillStyle = "#ffffff";
+    pen.font = font(900, 74);
+    pen.fillText("TANDA HQ", 200, 135);
+    pen.fillStyle = "#a8e6ff";
+    pen.font = font(700, 32);
+    pen.fillText("FORTITUDE VALLEY", 200, 197);
+  }), 0, 0, .035, 1.8, 1.14, true);
 
   // String lights along the top of the wall
   const lightPoints = 2 * Math.round(roomX / 2.3) + 1;
@@ -602,19 +599,18 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   }
   stationSign("REQUEST TRAY", "#bfe0ff", office.tray.x, .6, office.tray.z + 1.05, .68);
 
-  // Manager's desk with a big rubber stamp
+  // Height-adjustable manager’s desk with a big rubber stamp
   const desk = new T.Group();
   desk.position.set(office.desk.x, 0, office.desk.z);
   scene.add(desk);
   const deskTop = rbox(desk, colours.deskTop, 0, .84, 0, furniture.desk.w, .14, furniture.desk.d, .06, true);
   for (const x of [-1.25, 1.25]) {
-    rbox(desk, colours.desk, x, .39, 0, .82, .78, 1.06, .08);
-    for (const y of [.58, .26]) {
-      rbox(desk, 0xf3bd84, x, y, .54, .66, .24, .04, .04).castShadow = false;
-      ball(desk, colours.white, x, y, .57, .05, .05, .03, false);
-    }
+    rbox(desk, colours.white, x, .06, 0, .26, .12, 1.06, .04);
+    rbox(desk, colours.white, x, .29, -.08, .23, .46, .25, .025);
+    rbox(desk, colours.ink, x, .61, -.08, .16, .36, .17, .02);
   }
-  rbox(desk, colours.deskShade, 0, .5, -.42, 1.8, .6, .08, .04);
+  rbox(desk, colours.white, 0, .71, -.1, 2.5, .11, .16, .025);
+  rbox(desk, colours.ink, 1.3, .77, .58, .31, .07, .14, .02);
   stationSign("MANAGER’S DESK", "#ffe6a8", office.desk.x, .6, office.desk.z + .95, .68);
   // monitor
   const monitor = new T.Group();
@@ -802,7 +798,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     }
   }
 
-  // Low bookcases in the back corners, under the poster and the clock
+  // Low bookcases in the back corners, under the office sign and the clock
   // Centred between the board's frame and the corner plant's pot
   const cornerCaseX = (boardWidth / 2 + .18 + furniture.plants[1].x - .5) / 2;
   for (const side of [-1, 1]) {
@@ -1656,6 +1652,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   let tracked: Round | undefined;
   let lastFx = 0;
   let stampSlam = 0;
+  const padLandedAt = pads.map(() => -Infinity);
 
   function squash(index: number | undefined, amount: number) {
     if (index !== undefined && critters[index]) critters[index].squashSpeed = amount;
@@ -1686,10 +1683,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         squash(event.player, 5);
         if (mine) mine.popped = now - .15;
         break;
-      case "put":
+      case "put": {
+        const at = event.card === undefined ? undefined : round.cards[event.card]?.at;
+        if (at?.place === "counter") padLandedAt[at.pad] = now;
         squash(event.player, 4);
         emit(puffs, { x, y: .2, z }, 5, { colours: [0xfff6e6], speed: .9, up: .5, gravity: 0, life: .5, size: .9 });
         break;
+      }
       case "stamp": {
         squash(event.player, 7);
         stampSlam = 1;
@@ -1826,6 +1826,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     if (round !== tracked) {
       tracked = round;
       lastFx = 0;
+      padLandedAt.fill(-Infinity);
       paintBoard(round.needed);
       cardObjects.forEach(entry => {
         entry.shown = false;
@@ -2125,7 +2126,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         if (free) litPads[free.i] = true;
       });
     }
-    const pulse = .28 + Math.sin(now * 7) * .12;
+    const still = reducedMotion.matches;
+    const pulse = still ? .28 : .28 + Math.sin(now * 7) * .12;
     const glow = (mesh: T.Mesh, on: boolean) => {
       const surface = mesh.material as T.MeshStandardMaterial;
       surface.emissive.copy(highlightColour);
@@ -2134,7 +2136,14 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     glow(trayTop, lit.tray);
     glow(deskTop, lit.desk);
     glow(shredderBody, lit.shredder);
-    pads.forEach((pad, i) => glow(pad, litPads[i]));
+    pads.forEach((pad, i) => {
+      glow(pad, litPads[i]);
+      const remaining = 1 - (now - padLandedAt[i]) / .8;
+      if (remaining <= 0 || round.phase !== "playing") return;
+      const surface = pad.material as T.MeshStandardMaterial;
+      surface.emissive.setHex(0xffe29a);
+      surface.emissiveIntensity = still ? .55 : .9 * remaining;
+    });
     slotGlows.forEach((mesh, slot) => {
       mesh.visible = slotLit[slot] !== 0;
       if (!mesh.visible) return;

@@ -554,7 +554,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     rbox(scene, 0x7bbde0, x, .5, -.44, .9, .5, .02, .02).castShadow = false;
   }
   const pads = office.pass.map(point => rbox(scene, colours.pad, point.x, 1.02, point.z, 1.32, .055, .78, .025, true));
-  stationSign("PASS", "#fff27a", office.counterRight - 1.65, 1.75, 0, .46);
+  stationSign("PASS", "#fff27a", office.counterRight - 1.65, 1.8, 0, .6);
 
   // Request inbox
   const inbox = new T.Group();
@@ -565,7 +565,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   for (const [x, z, w, d] of [[0, .7, 3.2, .08], [0, -.7, 3.2, .08], [1.6, 0, .08, 1.4], [-1.6, 0, .08, 1.4]]) {
     rbox(inbox, 0x8db3f5, x, .87, z, w, .16, d, .035);
   }
-  stationSign("REQUEST TRAY", "#bfe0ff", office.tray.x, .55, office.tray.z + 1.05, .52);
+  stationSign("REQUEST TRAY", "#bfe0ff", office.tray.x, .6, office.tray.z + 1.05, .68);
 
   // Manager's desk with a big rubber stamp
   const desk = new T.Group();
@@ -580,7 +580,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     }
   }
   rbox(desk, colours.deskShade, 0, .5, -.42, 1.8, .6, .08, .04);
-  stationSign("MANAGER’S DESK", "#ffe6a8", office.desk.x, .55, office.desk.z + .95, .52);
+  stationSign("MANAGER’S DESK", "#ffe6a8", office.desk.x, .6, office.desk.z + .95, .68);
   // monitor
   const monitor = new T.Group();
   monitor.position.set(-1.15, .91, -.2);
@@ -666,7 +666,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     strip.rotation.z = (i - 2) * .08;
     strip.castShadow = false;
   }
-  stationSign("SHREDDER", "#fff27a", furniture.shredder.x + .35, .5, furniture.shredder.z + .9, .46);
+  stationSign("SHREDDER", "#fff27a", furniture.shredder.x + .35, .55, furniture.shredder.z + .9, .6);
   ball(shredderGroup, colours.stampRed, .33, 1.05, .52, .03, .03, .02, false);
   let shredShake = -10;
 
@@ -1705,9 +1705,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       } else if (at.place === "hand") {
         const holder = critters[at.player];
         point = round.players[at.player]?.position;
-        y = 3.0 + (holder ? holder.body.position.y * 1.35 : 0);
+        // Big enough to read the day from across the room
+        y = 3.2 + (holder ? holder.body.position.y * 1.35 : 0);
         tilt = .25;
-        scale = 1;
+        scale = 1.7;
         follow = 22;
         roll = still ? 0 : Math.sin(now * 3 + id) * .05;
       } else if (at.place === "snatcher") {
@@ -2198,7 +2199,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         // The fill grows from the left edge of the track
         bar.fill.scale.set(Math.max(.001, barWidth * amount), barHeight, 1);
         bar.fill.position.x = -barWidth / 2 + barWidth * amount / 2;
-        bar.group.position.set(player.position.x, 3.7, player.position.z);
+        bar.group.position.set(player.position.x, 4.15, player.position.z);
         bar.group.quaternion.copy(camera.quaternion);
       }
     });
@@ -2265,7 +2266,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       if (!marker.visible) return;
       const player = round.players[i];
       const lift = still ? 0 : Math.abs(Math.sin(now * 5)) * .18;
-      marker.position.set(player.position.x, (heldCard(round, i) ? 4.6 : 2.9) + lift, player.position.z);
+      marker.position.set(player.position.x, (heldCard(round, i) ? 5.1 : 2.9) + lift, player.position.z);
     });
 
     // Players heading for the same spot get their arrows side by side

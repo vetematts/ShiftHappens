@@ -26,6 +26,12 @@ export type HostMessage =
     filled: number;
     needed: number;
     news: string;
+    /** Seconds left in the 3-2-1 countdown before a round starts, or 0. */
+    countdown?: number;
+    /** This critter's tallies this round, for the results on the phone. */
+    stats?: { rostered: number; signed: number; passed: number };
+    /** Award titles this critter won, once the round has ended. */
+    awards?: string[];
   };
 
 export type Message = PhoneMessage | HostMessage;

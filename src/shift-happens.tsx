@@ -788,9 +788,9 @@ function Game() {
         <BigButton tone="primary" icon="▶" title="Start round"
           note={joined ? `${joined} phone${joined === 1 ? "" : "s"} in · keyboard players welcome too` : "Waiting for phones · keyboards work too"}
           onClick={() => start("quick")} />
-        <div className="phones-actions">
-          <button type="button" className="link" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
-          <button type="button" className="link" onClick={() => setPhones(null)}>Back to menu</button>
+        <div className="join-actions">
+          <button type="button" className="btn btn-ghost" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
+          <button type="button" className="btn btn-ghost" onClick={() => setPhones(null)}>Back to menu</button>
         </div>
       </div>
     </div>

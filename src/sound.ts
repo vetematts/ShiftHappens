@@ -104,6 +104,12 @@ export function createSound() {
     rescue: () => [660, 880, 1100].forEach((tone, i) => note(tone, i * 0.07, 0.14, "triangle", 0.09)),
     escape: () => note(500, 0, 0.4, "sawtooth", 0.05, 120),
     dash: () => note(300, 0, 0.12, "sine", 0.06, 700),
+    // A worried wobble before a cancellation lands
+    warn: () => [0, .14, .28].forEach(at => note(520, at, 0.1, "triangle", 0.05, 470)),
+    // A ⚡ appearing, being grabbed for a charge, or for a speed boost
+    bolt: () => note(1500, 0, 0.08, "sine", 0.03, 2200),
+    charge: () => [880, 1320].forEach((tone, i) => note(tone, i * 0.06, 0.1, "square", 0.05)),
+    boost: () => note(440, 0, 0.3, "sawtooth", 0.05, 1320),
     busy: () => fanfare(1),
     chaos: () => fanfare(1.5),
     win: () => [523, 659, 784, 1047].forEach((tone, i) => note(tone, i * 0.11, 0.32, "triangle", 0.12)),

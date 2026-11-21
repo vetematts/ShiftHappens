@@ -47,7 +47,7 @@ function goalFor(round: Round, i: number): { point: Point; act: "tap" | "hold" |
   if (card.kind === "cancelled") return { point: { x: furniture.shredder.x + 1.1, z: furniture.shredder.z }, act: "tap" };
   if (card.kind === "request" && !card.approved) return { point: { x: office.desk.x, z: office.desk.z - 1.2 }, act: "hold" };
   if (card.kind === "open" && !card.approved) {
-    const npc = round.npcs.find(n => n.kind === "staff" && n.days.includes(card.day));
+    const npc = round.npcs.find(n => n.kind === "staff" && n.person === card.worker);
     if (npc) return { point: { x: npc.point.x - .9, z: npc.point.z }, act: "tap" };
   }
   return { point: { x: columnX(card.day), z: office.boardZ + .6 }, act: "tap" };

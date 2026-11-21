@@ -302,14 +302,45 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 .gp-action:active { transform: translateY(.25rem); box-shadow: 0 .15rem 0 color-mix(in srgb, var(--gp) 60%, #000); }
 .gp-start { padding: 1rem 1.8rem; border-radius: 1.3rem; font-size: 1.3rem; }
 
+/* 3-2-1-Go before a round, on the big screen and on phones */
+.countdown { position: absolute; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; gap: .3rem; pointer-events: none; }
+.countdown span { color: var(--cream); font-size: clamp(6rem, 22vw, 13rem); font-weight: 700; line-height: 1; text-shadow: 0 .45rem 0 #c23a74, 0 1rem 2.5rem rgb(12 6 32 / .55); animation: count-pop .9s var(--spring) both; }
+.countdown small { color: var(--cream); font-size: 1.3rem; font-weight: 600; text-shadow: 0 .15rem .6rem rgb(12 6 32 / .7); }
+.countdown--go span { color: var(--sun); text-shadow: 0 .45rem 0 #c9871e, 0 1rem 2.5rem rgb(12 6 32 / .55); animation: count-go .9s ease-out both; }
+.gp { position: relative; }
+.gp-count { display: grid; align-content: center; justify-items: center; gap: .6rem; text-align: center; }
+.gp-count span { color: var(--gp); font-size: 9rem; font-weight: 700; line-height: 1; text-shadow: 0 .35rem 0 rgb(0 0 0 / .25); animation: count-pop .9s var(--spring) both; }
+.gp-count p { margin: 0; color: var(--muted); font-weight: 600; }
+
+/* A phone's own results */
+.gp-results { display: grid; align-content: center; justify-items: center; gap: .75rem; text-align: center; }
+.gp-results h1 { margin: 0; font-size: 2rem; font-weight: 700; }
+.gp-results > small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.gp-award { margin: 0; padding: .65rem 1.1rem; border-radius: 1rem; background: rgb(255 255 255 / .1); border: 1px solid rgb(255 255 255 / .18); color: var(--cream); font-size: 1.15rem; animation: rise .45s var(--spring) backwards; }
+.gp-award b { color: var(--sun); }
+.gp-award--none { color: var(--muted); font-size: .95rem; }
+.gp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; width: min(100%, 20rem); margin: 0; }
+.gp-stats div { display: grid; padding: .55rem .4rem; border-radius: .9rem; background: rgb(255 255 255 / .08); }
+.gp-stats dt { order: 2; color: var(--muted); font-size: .72rem; }
+.gp-stats dd { margin: 0; font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Quick flashes when something happens to your critter */
+.gp-flash { position: absolute; top: 4.4rem; left: 50%; padding: .55rem 1.1rem; border-radius: 999px; background: var(--mint); color: var(--ink); font-size: 1.15rem; font-weight: 700; white-space: nowrap; box-shadow: 0 .6rem 1.6rem rgb(12 6 32 / .45); pointer-events: none; animation: flash 1.4s ease-out both; }
+.gp-flash[data-kind="alert"], .gp-flash[data-kind="win"] { background: var(--sun); }
+.gp-flash[data-kind="lose"] { background: #ffb3c2; }
+
 @keyframes throb { to { transform: scale(1.03); } }
 @keyframes rise { from { transform: translateY(1.2rem) scale(.96); opacity: 0; } }
+@keyframes count-pop { from { transform: scale(1.6); opacity: .4; } 30% { transform: scale(1); opacity: 1; } to { transform: scale(.92); opacity: .9; } }
+@keyframes count-go { from { transform: scale(.6); opacity: 0; } 25% { transform: scale(1.1); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+@keyframes flash { from { transform: translate(-50%, -.6rem) scale(.8); opacity: 0; } 12% { transform: translate(-50%, 0) scale(1.05); opacity: 1; } 80% { transform: translate(-50%, 0); opacity: 1; } to { transform: translate(-50%, 0); opacity: 0; } }
 @keyframes drop { from { transform: translate(-50%, -1rem) scale(.9); opacity: 0; } }
 @keyframes slide { from { transform: translateX(1rem); opacity: 0; } }
 @keyframes ring { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
 @keyframes load { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 @media (prefers-reduced-motion: reduce) {
-  .panel, .toast, .toast span, .ticker span, .splash-logo, .stat-time.is-urgent, .sh--urgent .stage::after, .splash-bar span, .awards li { animation: none; }
+  .panel, .toast, .toast span, .ticker span, .splash-logo, .stat-time.is-urgent, .sh--urgent .stage::after, .splash-bar span, .awards li, .countdown span, .gp-count span, .gp-award { animation: none; }
+  .gp-flash { animation: none; transform: translateX(-50%); }
 }
 
 /* Phones and tablets */

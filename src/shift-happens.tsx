@@ -25,6 +25,8 @@ const critters = [
   { name: "frog", label: "Frog", emoji: "🐸" },
 ];
 const stickReach = 46;
+/** Seconds of 3-2-1 before a round, so everyone on keyboards and phones starts together. */
+const countdownSeconds = 3;
 const emptySeats = () => Array.from({ length: maxPlayers }, () => null as string | null);
 const stillInputs = () => Array.from({ length: maxPlayers }, () => ({ x: 0, y: 0, act: false }));
 
@@ -187,6 +189,9 @@ function Game() {
   const [muted, setMuted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  // The 3-2-1-Go before a round: when it ends (0 when not counting), and what the big screen shows
+  const countdownUntil = useRef(0);
+  const [countIn, setCountIn] = useState("");
   const [team, setTeam] = useState<Team>(() => copyTeam(sampleTeam));
   const [setup, setSetup] = useState(false);
   const [help, setHelp] = useState(false);
@@ -288,7 +293,7 @@ function Game() {
   });
   const onPhoneMessage = useEffectEvent((message: Message, peer: string) => {
     if (message.t === "start") {
-      if (round.current.phase !== "playing" && !setup) start();
+      if (round.current.phase !== "playing" && !setup && !countdownUntil.current) start();
       return;
     }
     if (message.t !== "input") return;
@@ -364,11 +369,27 @@ function Game() {
     let lastBroadcast = 0;
     let displayedPhase: Round["phase"] | undefined;
     let displayedRound: Round | undefined;
+    let shownCount = 0;
 
     function loop(now: number) {
       const state = round.current;
       const seconds = Math.max(0, (now - previous) / 1000);
       previous = now;
+      // Count 3-2-1 down before a round, then let everyone go at once
+      if (countdownUntil.current) {
+        const left = Math.ceil((countdownUntil.current - now) / 1000);
+        if (left <= 0) {
+          countdownUntil.current = 0;
+          shownCount = 0;
+          beginRound(state);
+          setCountIn("Go!");
+          effects.play("approve");
+        } else if (left !== shownCount) {
+          shownCount = left;
+          setCountIn(String(left));
+          effects.play("pick");
+        }
+      }
       if (state.phase === "playing" && world) {
         const moves = state.players.map(() => ({ across: 0, downward: 0 }));
         const pressed = keys.current;
@@ -395,13 +416,16 @@ function Game() {
       if (phoneLink.current && now - lastBroadcast >= 200) {
         lastBroadcast = now;
         const latest = snapshot(state);
+        const countdown = countdownUntil.current ? Math.max(1, Math.ceil((countdownUntil.current - now) / 1000)) : 0;
+        const awarded = state.phase === "won" || state.phase === "lost" ? partyAwards(latest.players) : [];
         seats.current.forEach((peer, i) => {
           const player = latest.players[i];
           if (!peer || !player) return;
           phoneLink.current!.send({
             t: "status", phase: state.phase, prompt: player.prompt, carrying: player.carrying, colour: player.colour,
             approved: player.approved, stamping: player.stamping, time: latest.time, filled: latest.filled,
-            needed: latest.needed, news: latest.news,
+            needed: latest.needed, news: latest.news, countdown, stats: player.stats,
+            awards: awarded.filter(award => award.winners.includes(i)).map(award => award.title),
           }, peer);
         });
       }
@@ -480,11 +504,19 @@ function Game() {
         people: team.people.filter(person => person.name.trim()).map(person => ({ ...person, name: person.name.trim() })),
       }, true, playerCount())
       : newRound(sampleTeam, false, playerCount());
-    beginRound(state);
+    // The round begins when the countdown runs out (see the loop)
     round.current = state;
+    countdownUntil.current = performance.now() + countdownSeconds * 1000;
     setView(snapshot(state));
     host.current?.focus({ preventScroll: true });
   }
+
+  // "Go!" shows for a moment after the round starts, then clears
+  useEffect(() => {
+    if (countIn !== "Go!") return;
+    const timer = window.setTimeout(() => setCountIn(""), 900);
+    return () => window.clearTimeout(timer);
+  }, [countIn]);
 
   function toggleSound() {
     sound.current?.unlock();
@@ -683,7 +715,14 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && !playing && (
+        {countIn && (
+          <div className={`countdown${countIn === "Go!" ? " countdown--go" : ""}`} role="status" aria-live="assertive">
+            <span key={countIn}>{countIn}</span>
+            {countIn !== "Go!" && <small>Get ready!</small>}
+          </div>
+        )}
+
+        {graphics === "ready" && !playing && !countIn && (
           <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? " screen--menu" : " screen--end"}`}>
             {setup ? (
               <div className="panel panel-wide">
@@ -770,7 +809,7 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && view.phase === "ready" && !setup && !help && (
+        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && (
           <p className="ticker" key={tip}><b>Tip</b><span>{tips[tip]}</span></p>
         )}
       </section>

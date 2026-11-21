@@ -164,6 +164,12 @@ export default function PhoneController({ code, local }: { code: string; local: 
   const playing = status?.phase === "playing";
   const countdown = status?.countdown ?? 0;
   const briefing = status?.briefing ?? 0;
+  // The lobby: who has a phone in, and the VIP (the lowest seat taken) who starts the round. Until the laptop says
+  // who's in, this phone counts as the VIP so it can always start.
+  const joined = status?.joined ?? [];
+  const firstIn = joined.findIndex(Boolean);
+  const vip = firstIn >= 0 ? firstIn : seat ?? 0;
+  const inRoom = Math.max(1, joined.filter(Boolean).length);
 
   return (
     <main className="gp" onContextMenu={event => event.preventDefault()} style={{ "--gp": critter?.colour ?? "#efe7ff" } as CSSProperties}>

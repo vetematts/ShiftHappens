@@ -2,16 +2,23 @@
  * Smoke test in a real browser: opens the built game in headless Edge/Chrome, starts a quick-play round,
  * walks the duck around, and saves screenshots plus any console errors.
  *
- *   npm run build && node scripts/smoke.mjs [browser.exe] [outDir]
+ *   npm run build && node scripts/smoke.mjs [browser] [outDir]
+ *
+ * Uses Edge on Windows and Chrome on a Mac or Linux unless you pass the path to a browser.
  *
  * Needs Node 22+ (global WebSocket). Screenshots go to `smoke-out/` (git-ignored) by default.
  */
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const browser = process.argv[2] ?? "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe";
+// Edge on Windows, Chrome on a Mac, Chrome or Chromium on Linux, unless a browser is passed in
+const defaultBrowser = {
+  win32: "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
+  darwin: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+}[process.platform] ?? ["/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find(path => existsSync(path)) ?? "google-chrome";
+const browser = process.argv[2] ?? defaultBrowser;
 const outDir = process.argv[3] ?? "smoke-out";
 const pagePort = 5199;
 const debugPort = 9333;

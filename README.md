@@ -27,7 +27,7 @@ The board only takes an approved card, in an empty slot on the card's day. Round
 
 Playing alone? Press **Q**, or the swap button on a touch screen, to switch critters.
 
-**Testing.** `node scripts/simulate.ts` plays rounds with bots and prints win rates. After `npm run build`, `node scripts/smoke.mjs` plays the build in headless Edge and saves screenshots to `smoke-out/`. Add `?debug` to the address to get `shiftHappens.round()` in the browser console.
+**Testing.** `node scripts/simulate.ts` plays rounds with bots and prints win rates. After `npm run build`, `node scripts/smoke.mjs` plays the build in headless Edge (Windows) or Chrome (Mac, Linux) and saves screenshots to `smoke-out/`. Add `?debug` to the address to get `shiftHappens.round()` in the browser console.
 
 ## Quick play or Roster my team
 

@@ -33,7 +33,7 @@ Playing alone? Press **Q**, or the swap button on a touch screen, to switch crit
 
 ## Quick play or Roster my team
 
-**Quick play** drops you into a two-minute week at a sample café.
+**Quick play** drops you into a two-minute Monday-to-Friday week at a dental clinic. Press Esc to pause (or ⏸ on a touch screen).
 
 **Roster my team** is for a real business, and takes four steps:
 

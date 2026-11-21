@@ -43,7 +43,7 @@ URL switches for testing in the browser:
 
 **Phones as controllers.** `src/phone-link.ts` wraps Trystero (Nostr relays for discovery, then WebRTC) behind a `Link` interface, with a same-browser stand-in for `?link=local`. Messages are `PhoneMessage` (phone → host) and `HostMessage` (host → phone). The laptop is authoritative. Phones take seats in join order up to four, and `ensurePlayers` adds critters mid-round, so per-player state must cope with `round.players` growing.
 
-**Teams.** Quick play uses `sampleTeam`. "Roster my team" (`src/team-setup.tsx`) starts from `templates` and edits a `Team` (roles, `shiftNames`, `perDay`, `needs`) saved to localStorage. The week has 14 shifts: indices 0–6 are Mon–Sun first shift and 7–13 the second, so the day is `shift % 7`. Use `shiftLabel(shiftNames, shift)` for labels.
+**Teams.** Quick play uses `quickTeam` (the Mon–Fri dental clinic). `sampleTeam` is the café template and the fallback saved team. "Roster my team" (`src/team-setup.tsx`) starts from `templates` and edits a `Team` (roles, `shiftNames`, `perDay`, `needs`) saved to localStorage. The week has 14 shifts: indices 0–6 are Mon–Sun first shift and 7–13 the second, so the day is `shift % 7`. Use `shiftLabel(shiftNames, shift)` for labels.
 
 **Other modules.** `sound.ts` synthesises every sound effect and the background music loop with Web Audio (no audio files). `play-qr.tsx` renders QR codes. `briefing.tsx` is the rules screen before a round.
 

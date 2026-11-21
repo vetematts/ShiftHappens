@@ -713,6 +713,9 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     cancelled: { body: "#ff9a9a", header: "#e0414b", headerInk: "#ffffff", ink: "#4a0f14", soft: "#9b1c26" },
   } as const;
   const headerText = { request: "REQUEST", open: "OPEN SHIFT", cancelled: "CANCELLED" } as const;
+  // Ready-to-pin cards swap their header for a green one with a tick and a green frame, so they read from across the room
+  const approvedText = { request: "✓ APPROVED", open: "✓ ACCEPTED", cancelled: "CANCELLED" } as const;
+  const approvedGreen = "#22b45e";
   const avatarTones = ["#ff9fb4", "#ffe08a", "#a8e08a", "#ffb070", "#c9a8ff", "#7fe0d0", "#fff3d6"];
 
   function cardTexture(card: Card, name: string) {
@@ -725,15 +728,23 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       pen.beginPath();
       pen.roundRect(0, 0, 256, 168, 20);
       pen.fill();
-      pen.fillStyle = look.header;
+      const ready = card.approved && card.kind !== "cancelled";
+      pen.fillStyle = ready ? approvedGreen : look.header;
       pen.beginPath();
       pen.roundRect(0, 0, 256, 46, [20, 20, 0, 0]);
       pen.fill();
+      if (ready) {
+        pen.strokeStyle = approvedGreen;
+        pen.lineWidth = 12;
+        pen.beginPath();
+        pen.roundRect(6, 6, 244, 156, 15);
+        pen.stroke();
+      }
       pen.textAlign = "center";
       pen.textBaseline = "middle";
-      pen.fillStyle = look.headerInk;
+      pen.fillStyle = ready ? "#ffffff" : look.headerInk;
       pen.font = font(900, 32);
-      pen.fillText(headerText[card.kind], 128, 25, 236);
+      pen.fillText(ready ? approvedText[card.kind] : headerText[card.kind], 128, 25, 236);
       pen.fillStyle = look.ink;
       pen.font = font(900, 100);
       pen.fillText(days[card.day], card.kind === "cancelled" ? 104 : 128, 92, 200);
@@ -760,11 +771,21 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         pen.textAlign = "left";
         pen.fillStyle = look.ink;
         pen.font = font(900, 46);
-        pen.fillText(card.kind === "open" && !card.approved ? `for ${name}` : name, 64, 143, card.approved ? 124 : 180);
+        pen.fillText(card.kind === "open" && !card.approved ? `for ${name}` : name, 64, 143, card.approved || card.kind === "request" ? 124 : 180);
       } else {
         pen.fillStyle = look.soft;
         pen.font = font(900, 34);
         pen.fillText(card.kind === "cancelled" ? "cancelled!" : "needs cover", 128, 142, 236);
+      }
+      if (card.kind === "request" && !card.approved) {
+        // An empty dashed ring where the tick will go: this one still needs the Manager's stamp
+        pen.strokeStyle = look.soft;
+        pen.lineWidth = 5;
+        pen.setLineDash([8, 7]);
+        pen.beginPath();
+        pen.arc(224, 138, 23, 0, Math.PI * 2);
+        pen.stroke();
+        pen.setLineDash([]);
       }
       if (card.approved) {
         pen.fillStyle = "#ffffff";
@@ -1297,6 +1318,13 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   // Screen space (in CSS pixels) the page's HUD covers at the top and bottom; the room is framed between them.
   let insetTop = 0;
   let insetBottom = 0;
+  // Pixels the player stack covers down the left edge. On landscape screens the room keeps clear of it.
+  let insetLeft = 0;
+  // Boxes in the top bar (the logo, the stats), in CSS pixels from the canvas's top left. On landscape screens the
+  // back of the room may rise into the bar's empty middle, as long as it stays clear of these.
+  type HudBox = { left: number; right: number; bottom: number };
+  let hudBoxes: HudBox[] = [];
+  const outline = [-cornerX, cornerX].flatMap(x => [new T.Vector3(x, 3.15, -(roomZ + .8)), new T.Vector3(x, -.9, roomZ + 1.05)]);
 
   // Landscape screens see the whole office. Tall screens fit its depth and follow player 1 sideways.
   function frame(width: number, height: number) {
@@ -1306,9 +1334,12 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     camera.fov = tall ? 36 : 30;
     camera.updateProjectionMatrix();
     const direction = new T.Vector3();
-    const top = Math.min(.95, 1 - 2 * insetTop / height);
+    const belowBar = Math.min(.95, 1 - 2 * insetTop / height);
+    let top = belowBar;
     const bottom = Math.max(touch && tall ? -.6 : touch ? -.9 : -.95, -1 + 2 * insetBottom / height);
     const span = tall ? Math.max(4.2, cornerX * aspect * .95) : Infinity;
+    // Left edge of the space the room may use (in screen units, -1 to 1). Tall screens pan, so they ignore the stack.
+    const leftEdge = tall ? -.97 : Math.max(-.97, -1 + 2 * insetLeft / width);
     // The room fits when it is narrow enough and its height on screen fits the band; centring comes after.
     const fits = (distance: number) => {
       camera.position.copy(focus).addScaledVector(direction, distance);
@@ -1323,7 +1354,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         low = Math.min(low, ndc.y);
         wide = Math.max(wide, Math.abs(ndc.x));
       });
-      return wide <= .97 && high - low <= top - bottom;
+      return wide * 2 <= .97 - leftEdge && high - low <= top - bottom;
     };
     // Closest camera distance at which the room fits, for a given tilt
     const closest = (pitch: number) => {
@@ -1337,37 +1368,70 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       }
       return far;
     };
-    // Landscape screens use the usual three-quarter view. When the room runs out of width before height
-    // (squarer windows), tilt a little more top-down so the spare height makes the room bigger instead of empty.
-    let pitch = tall ? 1.08 : .9;
-    let far = closest(pitch);
-    if (!tall) {
-      for (const steeper of [.95, 1.0, 1.05, 1.1]) {
-        const distance = closest(steeper);
-        if (distance < far * .985) {
-          pitch = steeper;
-          far = distance;
+    // Frames the room as big as it fits between `top` and `bottom`, and returns the camera distance.
+    const place = () => {
+      // Landscape screens use the usual three-quarter view. When the room runs out of width before height
+      // (squarer windows), tilt a little more top-down so the spare height makes the room bigger instead of empty.
+      let pitch = tall ? 1.08 : .9;
+      let far = closest(pitch);
+      if (!tall) {
+        for (const steeper of [.95, 1.0, 1.05, 1.1]) {
+          const distance = closest(steeper);
+          if (distance < far * .985) {
+            pitch = steeper;
+            far = distance;
+          }
         }
+        far = closest(pitch);
       }
-      far = closest(pitch);
-    }
-    // Centre the room vertically within the allowed band. Perspective makes one step inexact, so refine a few times.
-    fits(far);
-    const cameraUp = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-    const aim = focus.clone();
-    for (let step = 0; step < 4; step++) {
-      let high = -Infinity;
-      let low = Infinity;
-      corners.forEach(point => {
-        ndc.set(Math.max(-span, Math.min(span, point.x)), point.y, point.z).project(camera);
-        high = Math.max(high, ndc.y);
-        low = Math.min(low, ndc.y);
+      // Centre the room vertically within the allowed band, and slide it right only as far as it needs to clear the
+      // player stack. Perspective makes one step inexact, so refine a few times.
+      fits(far);
+      const cameraUp = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const cameraRight = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const aim = focus.clone();
+      const halfHeight = Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * far;
+      let goal = -Infinity;
+      for (let step = 0; step < 5; step++) {
+        let high = -Infinity;
+        let low = Infinity;
+        let leftmost = Infinity;
+        corners.forEach(point => {
+          ndc.set(Math.max(-span, Math.min(span, point.x)), point.y, point.z).project(camera);
+          high = Math.max(high, ndc.y);
+          low = Math.min(low, ndc.y);
+          leftmost = Math.min(leftmost, ndc.x);
+        });
+        if (step === 0) goal = Math.max(leftmost, leftEdge);
+        const lift = ((high + low) / 2 - (top + bottom) / 2) * halfHeight;
+        const slide = tall ? 0 : (goal - leftmost) * halfHeight * aspect;
+        camera.position.addScaledVector(cameraUp, lift).addScaledVector(cameraRight, -slide);
+        aim.addScaledVector(cameraUp, lift).addScaledVector(cameraRight, -slide);
+        camera.lookAt(aim);
+        camera.updateMatrixWorld();
+      }
+      return far;
+    };
+    // Whether the room's outline (back wall top, sloping out to the front corners) misses every top-bar box
+    const clearOfBar = () => {
+      const [backLeft, frontLeft, backRight, frontRight] = outline.map(point => {
+        ndc.copy(point).project(camera);
+        return { x: (ndc.x + 1) / 2 * width, y: (1 - ndc.y) / 2 * height };
       });
-      const lift = ((high + low) / 2 - (top + bottom) / 2) * Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * far;
-      camera.position.addScaledVector(cameraUp, lift);
-      aim.addScaledVector(cameraUp, lift);
-      camera.lookAt(aim);
-      camera.updateMatrixWorld();
+      const along = (from: { x: number; y: number }, to: { x: number; y: number }, y: number) =>
+        from.x + (to.x - from.x) * T.MathUtils.clamp((y - from.y) / (to.y - from.y || 1), 0, 1);
+      return hudBoxes.every(box => box.bottom <= Math.min(backLeft.y, backRight.y)
+        || box.right <= along(backLeft, frontLeft, box.bottom) || box.left >= along(backRight, frontRight, box.bottom));
+    };
+    // Start from the top of the screen and come down a few pixels at a time until the room clears the top bar's boxes.
+    // Tall screens pan sideways after the player, so they always stay below the whole bar.
+    let far = place();
+    if (!tall && hudBoxes.length) {
+      const ceiling = 1 - 2 * 8 / height;
+      for (top = Math.max(belowBar, ceiling); ; top = Math.max(belowBar, top - 2 * 5 / height)) {
+        far = place();
+        if (top <= belowBar || clearOfBar()) break;
+      }
     }
     basePosition.copy(camera.position);
     const halfView = Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * aspect * far;
@@ -1608,10 +1672,12 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         point = office.pass[at.pad];
         y = 1.16;
       } else if (at.place === "floor") {
+        // Dropped cards (a knocked-over Snatcher, a slip) lie big on the floor and bob gently, so they're easy to spot
         point = at.point;
-        y = .1;
+        y = .24 + (still ? 0 : Math.sin(now * 2.6 + id) * .04);
         tilt = 1.3;
-        yaw = (id % 7 - 3) * .25;
+        scale = 1.3;
+        yaw = (id % 7 - 3) * .12;
       } else if (at.place === "hand") {
         const holder = critters[at.player];
         point = round.players[at.player]?.position;
@@ -2199,11 +2265,18 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   return {
     draw,
-    /** Keep the room clear of page overlays: pixels covered at the top and bottom of the canvas. */
-    setInsets(top: number, bottom: number) {
-      if (Math.abs(top - insetTop) < 1 && Math.abs(bottom - insetBottom) < 1) return;
+    /**
+     * Keep the room clear of page overlays: pixels covered at the top, bottom and left of the canvas. `boxes` are the
+     * top bar's items; on landscape screens the room may rise past `top` into the gaps between them.
+     */
+    setInsets(top: number, bottom: number, boxes: HudBox[] = [], left = 0) {
+      const rounded = boxes.map(box => ({ left: Math.round(box.left), right: Math.round(box.right), bottom: Math.round(box.bottom) }));
+      if (Math.abs(top - insetTop) < 1 && Math.abs(bottom - insetBottom) < 1 && Math.abs(left - insetLeft) < 1
+        && JSON.stringify(rounded) === JSON.stringify(hudBoxes)) return;
       insetTop = Math.max(0, top);
       insetBottom = Math.max(0, bottom);
+      insetLeft = Math.max(0, left);
+      hudBoxes = rounded;
       size();
     },
     /** Turns screen-relative input (right, down) into a world direction for the current camera. */

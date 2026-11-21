@@ -5,9 +5,15 @@ import { useMemo } from "react";
 export const playUrl = "https://vetematts.github.io/ShiftHappens/";
 
 /** A QR code for any address, drawn as one SVG path. */
-export function QrCode({ text, className, label }: { text: string; className?: string; label?: string }) {
+export function QrCode({ text, className, label, level = "M", margin = 2 }: {
+  text: string; className?: string; label?: string;
+  /** Error correction: "L" gives fewer, bigger squares that scan from further away on a clean screen. */
+  level?: "L" | "M" | "Q" | "H";
+  /** White border around the code, in squares. */
+  margin?: number;
+}) {
   const { size, path } = useMemo(() => {
-    const code = qrcode(0, "M");
+    const code = qrcode(0, level);
     code.addData(text);
     code.make();
     const count = code.getModuleCount();
@@ -22,11 +28,11 @@ export function QrCode({ text, className, label }: { text: string; className?: s
       }
     }
     return { size: count, path: d };
-  }, [text]);
+  }, [text, level]);
   return (
-    <svg className={className} viewBox={`-2 -2 ${size + 4} ${size + 4}`} role="img"
+    <svg className={className} viewBox={`${-margin} ${-margin} ${size + margin * 2} ${size + margin * 2}`} role="img"
       aria-label={label ?? `QR code for ${text}`} shapeRendering="crispEdges">
-      <rect x={-2} y={-2} width={size + 4} height={size + 4} fill="#fff" rx={1.5} />
+      <rect x={-margin} y={-margin} width={size + margin * 2} height={size + margin * 2} fill="#fff" rx={1.5} />
       <path d={path} fill="#2a2433" />
     </svg>
   );

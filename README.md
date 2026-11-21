@@ -52,7 +52,7 @@ Like a Jackbox party game, the laptop or projector shows the game and phones bec
 
 A fifth phone waits and takes over a critter as soon as a phone leaves. If a phone leaves mid-round, its critter puts down the card it was carrying so nobody gets stuck. The keyboard keeps driving the duck and the bunny, so keyboard and phone players can mix.
 
-**How it works.** There is no game server. The QR code opens the same GitHub Pages site with the room in the address (`#join-ABCD`). The laptop and phones find each other through public Nostr relays using [Trystero](https://github.com/dmotz/trystero), then talk directly over WebRTC. The laptop runs the whole game. Phones send their stick and button about 20 times a second, and the laptop sends each phone its critter's status 5 times a second. The game contacts the relays only after someone selects the **Phones** tile.
+**How it works.** The QR code opens the same GitHub Pages site with the room in the address (`#join-ABCD`). By default the laptop and phones talk through the team's small relay server (below), which works on guest Wi-Fi. With `?relay=off` they find each other through public Nostr relays using [Trystero](https://github.com/dmotz/trystero) and talk directly over WebRTC instead. Either way the laptop runs the whole game: phones send their stick and button about 20 times a second, and the laptop sends each phone its critter's status 5 times a second.
 
 **Before a demo.** Test on the real Wi-Fi with real phones. Some venue and mobile networks block direct connections. If a phone stays on *Joining room…*, use the relay server below, put everything on one phone's hotspot, or fall back to the keyboard.
 
@@ -66,9 +66,9 @@ Put it online once, free, on [Render](https://render.com):
 2. Set **Root Directory** to `server`, **Build Command** to `npm install`, **Start Command** to `npm start`, **Region** to Singapore (closest to Brisbane) and **Instance Type** to Free. Create it.
 3. When it says **Live**, open its address (for example `https://shift-happens-relay.onrender.com`). It should say *Shift Happens relay is awake*.
 
-Then open the game with the relay's host name added, for example `https://vetematts.github.io/ShiftHappens/?relay=shift-happens-relay.onrender.com`, and select **Phones**. The menu says *via relay server*, and the QR code and join link carry the relay along, so phones use it too.
+The game uses the team's relay (`shifthappens-c5ij.onrender.com`, set in `src/phone-link.ts`) by default, so the plain address works and the menu says *via relay server*. Add `?relay=another-host.onrender.com` to use a different relay, or `?relay=off` to go back to direct connections; the QR code and join link carry either along.
 
-On demo day, open the relay's address about five minutes early: a free Render service sleeps after 15 idle minutes and takes about a minute to wake. Leave the game open on the laptop and it stays awake.
+The game pings the relay as soon as the page opens, to start waking it. On demo day, still open the relay's address about five minutes early: a free Render service sleeps after 15 idle minutes and takes about a minute to wake. Leave the game open on the laptop and it stays awake.
 
 To try the relay on one computer: `cd server && npm install && npm start`, then add `?relay=ws://localhost:8787` to the game's address.
 

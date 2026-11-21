@@ -7,7 +7,7 @@ import {
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
 import PhoneController from "./phone-controller";
-import { cardColours, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wantsLocalLink, type Link, type Message } from "./phone-link";
+import { cardColours, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
 import { PlayQr, playUrl, QrCode } from "./play-qr";
 import { createSound, type Sound } from "./sound";
 
@@ -416,6 +416,11 @@ function Game() {
     };
   }, [roomCode, roomLocal]);
 
+  // Wake the relay as the page opens, so it's ready by the time anyone scans the QR code
+  useEffect(() => {
+    if (!wantsLocalLink()) wakeRelay();
+  }, []);
+
   function startPhones() {
     sound.current?.unlock();
     setLinkCopied(false);
@@ -729,6 +734,33 @@ function Game() {
     </div>
   );
 
+  const joined = phones ? phones.seats.filter(Boolean).length : 0;
+  const joinPanel = phones && (
+    <div className="panel panel-join">
+      <div className="join-qr">
+        <QrCode text={joinUrl(phones.code, phones.local)} label={`QR code to join room ${phones.code} with a phone`} level="L" margin={3} />
+      </div>
+      <div className="join-side">
+        <p className="kicker">Scan to play</p>
+        <h2>Point your phone camera at the code</h2>
+        <p className="join-code">Room <b>{phones.code}</b>{phones.local ? " · same-browser test" : relayUrl() ? " · via relay server" : ""}</p>
+        <ul className="join-seats" aria-label="Players">
+          {critters.map(({ name, emoji }, i) => (
+            <li key={name} data-on={Boolean(phones.seats[i])}><span aria-hidden="true">{emoji}</span>{phones.seats[i] ? "Joined" : "Open"}</li>
+          ))}
+        </ul>
+        {phones.failed && <p className="phones-error">Couldn’t open the room. Check the internet connection.</p>}
+        <BigButton tone="primary" icon="▶" title="Start round"
+          note={joined ? `${joined} phone${joined === 1 ? "" : "s"} in · keyboard players welcome too` : "Waiting for phones · keyboards work too"}
+          onClick={() => start("quick")} />
+        <div className="phones-actions">
+          <button type="button" className="link" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
+          <button type="button" className="link" onClick={() => setPhones(null)}>Back to menu</button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <main className={`sh${urgent ? " sh--urgent" : ""}${playing ? " sh--playing" : ""}`}>
       <section className="stage" aria-label="Office">
@@ -853,7 +885,7 @@ function Game() {
         )}
 
         {graphics === "ready" && !playing && !countIn && (
-          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? " screen--menu" : " screen--end"}`}>
+          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}>
             {setup ? (
               <div className="panel panel-wide">
                 <TeamSetup team={team} onChange={changeTeam} onPlay={() => start("real")} onBack={() => setSetup(false)} />
@@ -882,6 +914,8 @@ function Game() {
                   <button type="button" className="btn btn-ghost" onClick={() => setHelp(false)}>Back</button>
                 </div>
               </div>
+            ) : view.phase === "ready" && joinPanel ? (
+              joinPanel
             ) : view.phase === "ready" ? (
               <div className="panel panel-menu">
                 <div className="logo"><span className="brand-tag">Shift</span><span className="brand-word">Happens!</span></div>
@@ -951,7 +985,7 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && (
+        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && !phones && (
           <p className="ticker" key={tip}><b>Tip</b><span>{tips[tip]}</span></p>
         )}
       </section>

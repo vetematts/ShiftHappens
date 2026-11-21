@@ -3,6 +3,7 @@
  *
  *   node scripts/simulate.ts            # 200 rounds per player count
  *   node scripts/simulate.ts 1 verbose  # one round, printing the board as it goes
+ *   SIM_PACE=0.4 node scripts/simulate.ts  # slower bots, closer to a human team
  *
  * Bots walk straight at targets (going round the east end of the counter when they need to cross),
  * so they are a rough stand-in for a decent human team, not a perfect one.
@@ -13,6 +14,8 @@ import {
 } from "../src/round.ts";
 
 const dt = 1 / 30;
+/** Bot walking speed as a fraction of the real speed. SIM_PACE=0.4 is closer to a human team than the default 1. */
+const pace = Number(process.env.SIM_PACE ?? 1);
 
 function goalFor(round: Round, i: number): { point: Point; act: "tap" | "hold" | "dash" } | undefined {
   const player = round.players[i];
@@ -67,7 +70,7 @@ function move(round: Round, i: number, to: Point) {
   const length = Math.hypot(dx, dz);
   if (length < .15) return true;
   // Bots ignore furniture: they slide straight, but at the real speed.
-  const step = Math.min(length, settings.speed * dt);
+  const step = Math.min(length, settings.speed * pace * dt);
   p.x += dx / length * step;
   p.z += dz / length * step;
   round.players[i].moving = true;
@@ -79,6 +82,8 @@ function play(players: number, verbose: boolean) {
   const round = newRound(undefined, false, players);
   beginRound(round);
   targets.length = 0;
+  let cancelCount = 0;
+  let escapeCount = 0;
   let lastPrint = 0;
   while (round.phase === "playing") {
     round.players.forEach((player, i) => {
@@ -94,7 +99,10 @@ function play(players: number, verbose: boolean) {
         interact(round, i);
       }
     });
+    const before = round.fxSeq;
     stepRound(round, dt);
+    cancelCount += round.fx.filter(f => f.id > before && f.kind === "cancel").length;
+    escapeCount += round.fx.filter(f => f.id > before && f.kind === "escape").length;
     if (verbose) {
       // Print each new "nope" reason once, when it first appears.
       round.players.forEach((p, i) => {
@@ -121,6 +129,8 @@ function play(players: number, verbose: boolean) {
     filled: filledShifts(round),
     snatches: round.cards.filter(c => c.at.place === "gone").length,
     sawCancel: kinds.includes("cancel") || round.stats.some(s => s.shredded > 0),
+    cancels: cancelCount,
+    escapes: escapeCount,
   };
 }
 
@@ -132,6 +142,6 @@ for (const players of [2, 3, 4]) {
   const wins = results.filter(r => r.won);
   const avgLeft = wins.reduce((sum, r) => sum + r.left, 0) / Math.max(1, wins.length);
   const avgFilled = results.reduce((sum, r) => sum + r.filled, 0) / results.length;
-  console.log(`${players}p: won ${wins.length}/${count} · avg time left on win ${avgLeft.toFixed(1)}s · avg filled ${avgFilled.toFixed(1)} · cancels seen in ${results.filter(r => r.sawCancel).length}`);
+  console.log(`${players}p: won ${wins.length}/${count} · avg time left on win ${avgLeft.toFixed(1)}s · avg filled ${avgFilled.toFixed(1)} · cancels seen in ${results.filter(r => r.sawCancel).length} · avg cancels ${(results.reduce((sum, r) => sum + r.cancels, 0) / results.length).toFixed(1)} · avg escapes ${(results.reduce((sum, r) => sum + r.escapes, 0) / results.length).toFixed(1)}`);
   if (verbose) break;
 }

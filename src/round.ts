@@ -189,7 +189,13 @@ export const settings = {
   /** Seconds between new Shift Requests, for 2 players. More players spawn faster. */
   spawnEvery: { calm: 3.4, busy: 2.8, chaos: 2.2 } as Record<Stage, number>,
   /** Seconds between cancellations (none while calm). */
-  cancelEvery: { calm: Infinity, busy: 14, chaos: 9 } as Record<Stage, number>,
+  cancelEvery: { calm: Infinity, busy: 22, chaos: 18 } as Record<Stage, number>,
+  /** Cancellations per round at most, so the board can still build up. */
+  maxCancels: 4,
+  /** A freshly pinned card can't be cancelled for this many seconds. */
+  cancelGrace: 12,
+  /** No cancellations until at least this many shifts are covered. */
+  cancelFrom: 4,
   /** Seconds between Shift Snatcher visits (none while calm). */
   snatcherEvery: { calm: Infinity, busy: 16, chaos: 10 } as Record<Stage, number>,
   snatcherSpeed: { calm: 2.4, busy: 2.4, chaos: 3.4 } as Record<Stage, number>,
@@ -319,6 +325,8 @@ export type Card = {
   at: CardPlace;
   /** round.elapsed when the card appeared, for spawn animations. */
   born: number;
+  /** round.elapsed when the card was last pinned on the board. */
+  pinnedAt?: number;
 };
 
 /** An employee in the system. `id` is their index in `round.staff`. */
@@ -374,6 +382,8 @@ export type Round = {
   stage: Stage;
   nextSpawn: number;
   nextCancel: number;
+  /** Cancellations so far this round. */
+  cancels: number;
   nextSnatch: number;
   /** Which of the 14 slots the week needs. */
   needed: boolean[];
@@ -534,6 +544,7 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     stage: "calm",
     nextSpawn: 0,
     nextCancel: settings.busyAt + 4,
+    cancels: 0,
     nextSnatch: settings.busyAt + 8,
     needed: slotRoles.map(role => role !== null),
     roles: team.roles.map(entry => ({ ...entry })),
@@ -625,11 +636,18 @@ function keepStaffRoomUseful(round: Round) {
   });
 }
 
+/** Cancels one pinned shift. Returns false when now isn't a fair time, so the caller can try again soon. */
 function cancelShift(round: Round) {
+  if (round.cancels >= settings.maxCancels) return true;
+  // One red card at a time, and only once the board has some shifts on it
+  if (round.board.some(id => id !== undefined && round.cards[id].kind === "cancelled")) return false;
   const snatcher = round.npcs.find(npc => npc.kind === "snatcher");
+  const covers = round.board.filter((_, slot) => covered(round, slot)).length;
+  if (covers < settings.cancelFrom) return false;
   const filled = round.board.map((_, slot) => slot).filter(slot => covered(round, slot)
-    && !(snatcher?.kind === "snatcher" && snatcher.target === slot));
-  if (filled.length < 2) return;
+    && !(snatcher?.kind === "snatcher" && snatcher.target === slot)
+    && round.elapsed - (cardIn(round, slot)!.pinnedAt ?? -Infinity) >= settings.cancelGrace);
+  if (!filled.length) return false;
   const slot = filled[Math.floor(Math.random() * filled.length)];
   const card = cardIn(round, slot)!;
   card.kind = "cancelled";
@@ -637,6 +655,8 @@ function cancelShift(round: Round) {
   const who = card.worker === undefined ? "Someone" : round.staff[card.worker].name;
   announce(round, `${who} cancelled ${shifts[slot].label}! Pull the red card and shred it.`);
   fx(round, "cancel", slotFloor(slot), { card: card.id });
+  round.cancels++;
+  return true;
 }
 
 function spawnSnatcher(round: Round) {
@@ -777,8 +797,8 @@ export function stepRound(round: Round, seconds: number) {
     round.nextSpawn = round.elapsed + spawnInterval(round);
   }
   if (round.elapsed >= round.nextCancel) {
-    cancelShift(round);
-    round.nextCancel = round.elapsed + settings.cancelEvery[round.stage];
+    // If it isn't a fair moment to cancel, look again in a couple of seconds rather than skipping a whole interval
+    round.nextCancel = round.elapsed + (cancelShift(round) ? settings.cancelEvery[round.stage] : 2);
   }
   if (round.elapsed >= round.nextSnatch) {
     spawnSnatcher(round);
@@ -927,6 +947,13 @@ function pinTarget(round: Round, point: Point, card: Card): { slot: number } | {
   return { slot };
 }
 
+/** Why the desk won't stamp this card, and where it goes instead. */
+function deskHint(card: Card) {
+  if (card.kind === "cancelled") return "No stamp for cancelled cards: shred it";
+  if (card.approved) return `Already approved: pin it on ${days[card.day]}`;
+  return "Open shifts skip the stamp: take it to the Staff Room";
+}
+
 /** A short hint for what the action button will do right now. */
 export function nextAction(round: Round, index: number) {
   const player = round.players[index];
@@ -945,7 +972,7 @@ export function nextAction(round: Round, index: number) {
     return "slot" in target ? `Pin to ${shifts[target.slot].label}` : target.why;
   }
   if (atShredder(position)) return card.kind === "cancelled" ? "Shred it" : "Shred (bin this card)";
-  if (card.kind === "request" && !card.approved && atDesk(position)) return "Hold to stamp";
+  if (atDesk(position)) return card.kind === "request" && !card.approved ? "Hold to stamp" : deskHint(card);
   if (card.kind === "open" && !card.approved) {
     const npc = staffInReach(round, position, card.day);
     if (npc) {
@@ -1000,6 +1027,7 @@ export function interact(round: Round, index: number) {
     }
     round.board[target.slot] = card.id;
     card.at = { place: "board", slot: target.slot };
+    card.pinnedAt = round.elapsed;
     player.holding = undefined;
     round.stats[index].pinned++;
     fx(round, "pin", slotFloor(target.slot), { player: index, card: card.id });
@@ -1017,8 +1045,14 @@ export function interact(round: Round, index: number) {
     return;
   }
 
-  if (card.kind === "request" && !card.approved && atDesk(position)) {
-    player.stamping = true;
+  if (atDesk(position)) {
+    if (card.kind === "request" && !card.approved) {
+      player.stamping = true;
+      return;
+    }
+    // Never drop a card at the desk by accident: say where it goes instead
+    notify(round, player, `${deskHint(card)}.`);
+    fx(round, "nope", position, { player: index, card: card.id });
     return;
   }
 

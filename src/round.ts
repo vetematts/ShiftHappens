@@ -1538,6 +1538,38 @@ export function nextAction(round: Round, index: number) {
   return `Pin it on ${days[card.day]}`;
 }
 
+/** Where a carried card goes next. */
+export type Stop = Point & { to: "desk" | "counter" | "board" | "shredder" | "person" };
+
+/**
+ * Where the card this player carries should go next, so the office can point the way: the desk to stamp it, a free
+ * spot on the counter to pass it over, its day on the board, the shredder, or the employee an open shift is for.
+ * Undefined with empty hands.
+ */
+export function nextStop(round: Round, index: number): Stop | undefined {
+  const player = round.players[index];
+  const card = heldCard(round, index);
+  if (!player || !card) return undefined;
+  if (card.kind === "cancelled") return { ...furniture.shredder, to: "shredder" };
+  if (card.kind === "open" && !card.approved) {
+    const npc = wantedBy(round, card);
+    return npc && { x: npc.point.x, z: npc.point.z, to: "person" };
+  }
+  if (!card.approved) return { x: office.desk.x, z: office.desk.z, to: "desk" };
+  const from = player.position;
+  if (from.z > 0) {
+    const taken = (pad: number) => round.cards.some(other => other.at.place === "counter" && other.at.pad === pad);
+    const free = office.pass.filter((_, pad) => !taken(pad));
+    const away = (pad: Point) => Math.hypot(pad.x - from.x, pad.z - from.z);
+    const pad = (free.length ? free : office.pass).reduce((best, next) => (away(next) < away(best) ? next : best));
+    return { x: pad.x, z: pad.z, to: "counter" };
+  }
+  const role = workerRole(round, card);
+  const open = emptySlots(round, card.day);
+  const slot = open.find(slot => role === undefined || round.slotRoles[slot] === role) ?? open[0];
+  return slot === undefined ? undefined : { ...slotFloor(slot), to: "board" };
+}
+
 function release(round: Round, index: number, at: CardPlace) {
   const player = round.players[index];
   const card = heldCard(round, index)!;

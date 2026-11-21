@@ -215,7 +215,7 @@ export const settings = {
   dashCooldown: .35,
   /** Dash charges per critter. One refills on its own every `dashRegen` seconds; ⚡ pickups refill one at once. */
   dashCharges: 3,
-  dashRegen: 9,
+  dashRegen: 3,
   /** ⚡ pickups on the floor: a new one every few seconds (at most `maxBolts` lying around). */
   boltEvery: { min: 12, max: 18 },
   maxBolts: 1,

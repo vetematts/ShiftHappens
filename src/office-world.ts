@@ -35,9 +35,9 @@ const boardPixels = Math.round(boardWidth * 133);
 const backWallZ = -(roomZ + .64);
 const sideWallX = roomX + .77;
 const boardHeight = 1.95;
-// Fredoka tops out at 700; the page loads it before the office is drawn
+// Bricolage Grotesque tops out at 800; the page loads it before the office is drawn
 const font = (weight: number, size: number) =>
-  `${Math.min(700, weight)} ${size}px "Fredoka Variable", ui-rounded, "SF Pro Rounded", Nunito, system-ui, sans-serif`;
+  `${Math.min(800, weight)} ${size}px "Bricolage Grotesque Variable", system-ui, -apple-system, "Segoe UI", sans-serif`;
 
 type Kind = typeof critterKinds[number];
 type Critter = ReturnType<typeof makeCritter>;

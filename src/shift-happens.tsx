@@ -675,9 +675,9 @@ function Game() {
       round.current.players.forEach((_, i) => stopStamp(round.current, i));
     }
 
-    // Draw the office once the rounded font is in, so its signs and name tags use it (or after a second regardless)
+    // Draw the office once the font is in, so its signs and name tags use it (or after a second regardless)
     let cancelled = false;
-    const fontReady = Promise.race([document.fonts.load('700 32px "Fredoka Variable"'), new Promise(done => setTimeout(done, 1000))]);
+    const fontReady = Promise.race([document.fonts.load('700 32px "Bricolage Grotesque Variable"'), new Promise(done => setTimeout(done, 1000))]);
     fontReady.catch(() => {}).then(() => {
       if (cancelled) return;
       frame = requestAnimationFrame(now => {

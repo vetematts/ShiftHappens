@@ -2,12 +2,12 @@ import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type
 import { createOfficeWorld } from "./office-world";
 import {
   beginRound, cardIn, dash, days, dropCarried, ensurePlayers, filledShifts, heldCard, interact, neededShifts, newRound, nextAction, roleIn, roster,
-  sampleTeam, settings, shiftLabel, shifts, stepRound, stopStamp, templates, walk,
+  sampleTeam, settings, shiftLabel, shifts, stageAt, stepRound, stopStamp, templates, walk,
   type Round, type Stage, type Team,
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
 import PhoneController from "./phone-controller";
-import { cardColours, cardText, critters, joinUrl, makeRoomCode, openLink, readJoin, wantsLocalLink, type Link, type Message } from "./phone-link";
+import { cardColours, cardText, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
 import { PlayQr, playUrl, QrCode } from "./play-qr";
 import { createSound, type Sound } from "./sound";
 
@@ -20,6 +20,8 @@ const gameKeys = [...keyboards.flatMap(({ up, left, down, right, use, dash }) =>
 const player2Keys = [keyboards[1].up, keyboards[1].left, keyboards[1].down, keyboards[1].right, keyboards[1].use, ...keyboards[1].dash];
 const stageNames: Record<Stage, string> = { calm: "Calm", busy: "Busy!", chaos: "Chaos!" };
 const stageStart: Record<Stage, number> = { calm: 0, busy: settings.busyAt, chaos: settings.chaosAt };
+/** How fast the background music plays in each stage (1 is normal). */
+const musicTempo: Record<Stage, number> = { calm: 1, busy: 1.08, chaos: 1.16 };
 const newInput = () => ({ x: 0, y: 0, act: false, dash: false });
 const emptySeats = (): (string | null)[] => critters.map(() => null);
 /** Seconds of 3-2-1 before a round, so everyone on keyboards and phones starts together. */
@@ -425,6 +427,11 @@ function Game() {
     };
   }, [roomCode, roomLocal]);
 
+  // Wake the relay as the page opens, so it's ready by the time anyone scans the QR code
+  useEffect(() => {
+    if (!wantsLocalLink()) wakeRelay();
+  }, []);
+
   function startPhones() {
     sound.current?.unlock();
     setLinkCopied(false);
@@ -529,8 +536,11 @@ function Game() {
         const left = Math.ceil(settings.duration - state.elapsed);
         if (left <= 10 && left < lastTick && left > 0) effects.play("tick");
         lastTick = left;
+        // Music speeds up each stage, and again for the last ten seconds
+        effects.setMusic(left <= 10 ? 1.35 : musicTempo[stageAt(state.elapsed)]);
       } else {
         lastTick = Infinity;
+        effects.setMusic(0);
       }
       if (now - lastFit >= 250) {
         lastFit = now;
@@ -609,6 +619,7 @@ function Game() {
       window.removeEventListener("keyup", keyup);
       window.removeEventListener("blur", clearKeys);
       document.removeEventListener("visibilitychange", clearKeys);
+      effects.setMusic(0);
       world?.dispose();
     };
   }, []);
@@ -720,7 +731,7 @@ function Game() {
       <QrCode text={joinUrl(phones.code, phones.local)} label={`QR code to join room ${phones.code} with a phone`} />
       <div>
         <strong>Scan to use your phone as a controller</strong>
-        <p>Room <b className="phones-code">{phones.code}</b>{phones.local ? " · same-browser test" : ""}</p>
+        <p>Room <b className="phones-code">{phones.code}</b>{phones.local ? " · same-browser test" : relayUrl() ? " · via relay server" : ""}</p>
         <ul>
           {critters.map(({ name, emoji }, i) => (
             <li key={name} data-on={Boolean(phones.seats[i])}>{emoji} {name[0].toUpperCase() + name.slice(1)}: {phones.seats[i] ? "phone connected" : "waiting…"}</li>
@@ -730,6 +741,33 @@ function Game() {
         <div className="phones-actions">
           <button type="button" className="link" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
           <button type="button" className="link" onClick={() => setPhones(null)}>Stop using phones</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const joined = phones ? phones.seats.filter(Boolean).length : 0;
+  const joinPanel = phones && (
+    <div className="panel panel-join">
+      <div className="join-qr">
+        <QrCode text={joinUrl(phones.code, phones.local)} label={`QR code to join room ${phones.code} with a phone`} level="L" margin={3} />
+      </div>
+      <div className="join-side">
+        <p className="kicker">Scan to play</p>
+        <h2>Point your phone camera at the code</h2>
+        <p className="join-code">Room <b>{phones.code}</b>{phones.local ? " · same-browser test" : relayUrl() ? " · via relay server" : ""}</p>
+        <ul className="join-seats" aria-label="Players">
+          {critters.map(({ name, emoji }, i) => (
+            <li key={name} data-on={Boolean(phones.seats[i])}><span aria-hidden="true">{emoji}</span>{phones.seats[i] ? "Joined" : "Open"}</li>
+          ))}
+        </ul>
+        {phones.failed && <p className="phones-error">Couldn’t open the room. Check the internet connection.</p>}
+        <BigButton tone="primary" icon="▶" title="Start round"
+          note={joined ? `${joined} phone${joined === 1 ? "" : "s"} in · keyboard players welcome too` : "Waiting for phones · keyboards work too"}
+          onClick={() => start("quick")} />
+        <div className="phones-actions">
+          <button type="button" className="link" onClick={() => copyJoinLink(phones.code, phones.local)}>{linkCopied ? "Link copied ✓" : "Copy join link"}</button>
+          <button type="button" className="link" onClick={() => setPhones(null)}>Back to menu</button>
         </div>
       </div>
     </div>
@@ -859,7 +897,7 @@ function Game() {
         )}
 
         {graphics === "ready" && !playing && !countIn && (
-          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? " screen--menu" : " screen--end"}`}>
+          <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}>
             {setup ? (
               <div className="panel panel-wide">
                 <TeamSetup team={team} onChange={changeTeam} onPlay={() => start("real")} onBack={() => setSetup(false)} />
@@ -889,6 +927,8 @@ function Game() {
                   <button type="button" className="btn btn-ghost" onClick={() => setHelp(false)}>Back</button>
                 </div>
               </div>
+            ) : view.phase === "ready" && joinPanel ? (
+              joinPanel
             ) : view.phase === "ready" ? (
               <div className="panel panel-menu">
                 <div className="logo"><span className="brand-tag">Shift</span><span className="brand-word">Happens!</span></div>
@@ -958,7 +998,7 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && (
+        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && !phones && (
           <p className="ticker" key={tip}><b>Tip</b><span>{tips[tip]}</span></p>
         )}
       </section>

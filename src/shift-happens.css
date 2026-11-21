@@ -240,6 +240,26 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 .awards b { color: var(--sun); font-size: .95rem; font-weight: 700; line-height: 1.15; }
 .awards small { color: var(--muted); font-size: .75rem; }
 .phones-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+/* Join screen while phones are on: one big QR code that scans from across the room, the room code and who's in */
+.screen--join { justify-items: center; align-items: center; padding: 4.6rem 1rem 1rem; background: rgb(29 22 56 / .55); backdrop-filter: blur(6px); }
+.panel-join { width: auto; max-width: 100%; grid-template-columns: auto minmax(16rem, 24rem); align-items: center; gap: clamp(1rem, 3vw, 2.4rem); padding: clamp(1rem, 2.4vw, 1.8rem); }
+.join-qr { padding: clamp(.5rem, 1vw, .9rem); border-radius: 1.5rem; background: #fff; box-shadow: 0 1rem 2.5rem rgb(12 6 32 / .45); }
+.join-qr svg { display: block; width: min(44rem, calc(100svh - 11rem), 50vw); height: auto; aspect-ratio: 1; }
+.join-side { display: grid; gap: .8rem; align-content: center; }
+.join-side h2 { font-size: clamp(1.6rem, 3vw, 2.3rem) !important; }
+.join-code { margin: 0; color: var(--muted); font-size: 1rem; }
+.join-code b { color: var(--sun); font-size: clamp(2rem, 4.4vw, 3.2rem); font-weight: 700; letter-spacing: .14em; vertical-align: middle; }
+.join-seats { display: grid; grid-template-columns: repeat(4, 1fr); gap: .45rem; margin: 0; padding: 0; list-style: none; }
+.join-seats li { display: grid; justify-items: center; gap: .1rem; padding: .55rem .3rem; border-radius: 1rem; background: rgb(255 255 255 / .06); border: 1px dashed rgb(255 255 255 / .25); color: var(--muted); font-size: .85rem; font-weight: 600; }
+.join-seats li span { font-size: 1.9rem; line-height: 1.1; filter: grayscale(.8); opacity: .55; }
+.join-seats li[data-on=true] { background: rgb(63 207 174 / .18); border: 1px solid var(--mint); color: #7af0cf; }
+.join-seats li[data-on=true] span { filter: none; opacity: 1; }
+@media (max-width: 52rem) {
+  .panel-join { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; }
+  .join-qr svg { width: min(82vw, calc(100svh - 24rem), 26rem); min-width: 12rem; }
+  .join-side { justify-items: center; }
+}
 .roster-scroll { width: 100%; max-height: 40vh; overflow: auto; border-radius: 1rem; }
 .roster { width: 100%; border-collapse: separate; border-spacing: .25rem; font-size: .8rem; table-layout: fixed; }
 .roster th { color: var(--muted); font-weight: 600; }

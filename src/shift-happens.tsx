@@ -990,7 +990,7 @@ function Game() {
         )}
 
         {briefLeft > 0 && (
-          <Briefing left={briefLeft} seats={phones ? phones.seats : null} ready={ready} onGo={briefDone} />
+          <Briefing open={view.strip.map(slot => slot.state !== "closed")} left={briefLeft} seats={phones ? phones.seats : null} ready={ready} onGo={briefDone} />
         )}
 
         {countIn && (

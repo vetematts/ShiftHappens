@@ -225,7 +225,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   renderer.toneMapping = T.NeutralToneMapping;
   renderer.toneMappingExposure = 1.04;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = touch ? T.PCFShadowMap : T.PCFSoftShadowMap;
+  // Three.js dropped PCFSoftShadowMap (it fell back to this with a console warning), so use PCF everywhere
+  renderer.shadowMap.type = T.PCFShadowMap;
   renderer.domElement.setAttribute("aria-label", "3D office with a request tray, manager’s desk, pass counter, shredder and roster board");
   renderer.domElement.setAttribute("role", "img");
   host.appendChild(renderer.domElement);

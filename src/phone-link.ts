@@ -4,6 +4,9 @@
  * Phones and the laptop talk directly over WebRTC. Trystero only uses public relays to introduce them, so this works
  * from a static site such as GitHub Pages with no game server. Add `?link=local` to the host's address to swap in a
  * stand-in that only connects tabs in the same browser, for testing without a network.
+ *
+ * Guest and venue Wi-Fi often block direct connections. Add `?relay=your-relay.onrender.com` to the host's address
+ * (see server/relay.mjs) and everyone talks through that server instead; the join link and QR code carry it along.
  */
 
 import type { Stats } from "./round";
@@ -69,7 +72,22 @@ export function makeRoomCode() {
 
 /** The address a phone opens to join. A hash survives GitHub Pages and keeps the code out of server logs. */
 export function joinUrl(code: string, local: boolean) {
-  return `${location.origin}${location.pathname}#join-${code}${local ? "-local" : ""}`;
+  // Phones use the same relay server as the laptop, when the laptop's address names one
+  const relay = new URLSearchParams(location.search).get("relay");
+  const query = relay && !local ? `?relay=${encodeURIComponent(relay)}` : "";
+  return `${location.origin}${location.pathname}${query}#join-${code}${local ? "-local" : ""}`;
+}
+
+/**
+ * The relay server to talk through, if any: `?relay=` in the address, or VITE_RELAY_URL when the site was built.
+ * Accepts a bare host (`my-relay.onrender.com`), https:// or wss://.
+ */
+export function relayUrl() {
+  const given = (new URLSearchParams(location.search).get("relay") || import.meta.env.VITE_RELAY_URL || "").trim();
+  if (!given) return "";
+  if (/^wss?:\/\//.test(given)) return given;
+  if (/^https?:\/\//.test(given)) return given.replace(/^http/, "ws");
+  return `wss://${given}`;
 }
 
 /** Reads a join link from the current address: `#join-ABCD` (or `?join=ABCD`). */
@@ -85,7 +103,9 @@ export function readJoin(): { code: string; local: boolean } | null {
 export const wantsLocalLink = () => new URLSearchParams(location.search).get("link") === "local";
 
 export async function openLink(code: string, local: boolean): Promise<Link> {
-  return local ? openLocalLink(code) : openNetworkLink(code);
+  if (local) return openLocalLink(code);
+  const relay = relayUrl();
+  return relay ? openRelayLink(code, relay) : openNetworkLink(code);
 }
 
 async function openNetworkLink(code: string): Promise<Link> {
@@ -99,6 +119,79 @@ async function openNetworkLink(code: string): Promise<Link> {
     onJoin: handler => void room.onPeerJoin(context => handler(context.peerId)),
     onLeave: handler => void room.onPeerLeave(context => handler(context.peerId)),
     close: () => void room.leave(),
+  };
+}
+
+type RelayMessage =
+  | { type: "peers"; ids: string[] }
+  | { type: "join" | "leave"; id: string }
+  | { type: "msg"; from: string; data: Message };
+
+// Talks through the relay server over one WebSocket, reconnecting on its own if the connection drops. The server holds
+// this peer's place for a few seconds, so a quick reconnect keeps a phone in its seat.
+function openRelayLink(code: string, url: string): Link {
+  const self = Math.random().toString(36).slice(2, 12);
+  const peers = new Set<string>();
+  const handlers = { message: [] as ((m: Message, from: string) => void)[], join: [] as ((p: string) => void)[], leave: [] as ((p: string) => void)[] };
+  let socket: WebSocket | undefined;
+  let closed = false;
+  let wait = 400;
+  const meet = (peer: string) => {
+    if (peers.has(peer)) return;
+    peers.add(peer);
+    handlers.join.forEach(handler => handler(peer));
+  };
+  const write = (frame: object) => {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(frame));
+  };
+
+  function connect() {
+    if (closed) return;
+    const current = new WebSocket(url);
+    socket = current;
+    current.onopen = () => {
+      wait = 400;
+      current.send(JSON.stringify({ type: "hello", room: code, id: self }));
+    };
+    current.onmessage = event => {
+      let message: RelayMessage;
+      try {
+        message = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+      if (message.type === "peers") message.ids.forEach(meet);
+      else if (message.type === "join") meet(message.id);
+      else if (message.type === "leave") {
+        if (peers.delete(message.id)) handlers.leave.forEach(handler => handler(message.id));
+      } else if (message.type === "msg") {
+        meet(message.from);
+        handlers.message.forEach(handler => handler(message.data, message.from));
+      }
+    };
+    current.onclose = () => {
+      if (closed || socket !== current) return;
+      // Try again soon, backing off while the server wakes up or the network recovers
+      setTimeout(connect, wait);
+      wait = Math.min(wait * 2, 4000);
+    };
+  }
+
+  const goodbye = () => write({ type: "bye" });
+  window.addEventListener("pagehide", goodbye);
+  // Connect once listeners have had a chance to attach
+  setTimeout(connect, 0);
+  return {
+    send: (message, to) => write({ type: "send", to, data: message }),
+    onMessage: handler => void handlers.message.push(handler),
+    onJoin: handler => void handlers.join.push(handler),
+    onLeave: handler => void handlers.leave.push(handler),
+    close: () => {
+      closed = true;
+      goodbye();
+      window.removeEventListener("pagehide", goodbye);
+      socket?.close();
+    },
   };
 }
 

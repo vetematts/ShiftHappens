@@ -7,7 +7,7 @@ import {
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
 import PhoneController from "./phone-controller";
-import { cardColours, critters, joinUrl, makeRoomCode, openLink, readJoin, wantsLocalLink, type Link, type Message } from "./phone-link";
+import { cardColours, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wantsLocalLink, type Link, type Message } from "./phone-link";
 import { PlayQr, playUrl, QrCode } from "./play-qr";
 import { createSound, type Sound } from "./sound";
 
@@ -714,7 +714,7 @@ function Game() {
       <QrCode text={joinUrl(phones.code, phones.local)} label={`QR code to join room ${phones.code} with a phone`} />
       <div>
         <strong>Scan to use your phone as a controller</strong>
-        <p>Room <b className="phones-code">{phones.code}</b>{phones.local ? " · same-browser test" : ""}</p>
+        <p>Room <b className="phones-code">{phones.code}</b>{phones.local ? " · same-browser test" : relayUrl() ? " · via relay server" : ""}</p>
         <ul>
           {critters.map(({ name, emoji }, i) => (
             <li key={name} data-on={Boolean(phones.seats[i])}>{emoji} {name[0].toUpperCase() + name.slice(1)}: {phones.seats[i] ? "phone connected" : "waiting…"}</li>

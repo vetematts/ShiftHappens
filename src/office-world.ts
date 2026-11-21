@@ -3,8 +3,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
   atBoard, atDesk, atShredder, atTray, cardIn, columnAt, columnGap, columnX, days, furniture, hazardRadius, heldCard,
-  isDashing, isFallen, nextStop, office, settings, staffInReach, traySpot, wantedBy,
-  type Card, type Fx, type Hazard, type Npc, type Round, type Stop,
+  isDashing, isFallen, office, settings, staffInReach, traySpot, wantedBy,
+  type Card, type Fx, type Hazard, type Npc, type Round,
 } from "./round";
 import type { Sound } from "./sound";
 
@@ -1310,30 +1310,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     return mesh;
   });
 
-  // Where each carried card goes next: a bigger arrow in the carrier's colour, bobbing over the desk, the counter,
-  // the right day on the board, the shredder or the employee an open shift is for
-  const beaconGeometry = new T.ConeGeometry(.5, .9, 24);
-  geometries.push(beaconGeometry);
-  // A slightly bigger white cone drawn first gives each arrow an outline, so it reads on any floor or furniture
-  const beaconEdge = new T.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, depthTest: false, side: T.BackSide });
-  ownMaterials.push(beaconEdge);
-  const beacons = playerColours.map(look => {
-    const surface = new T.MeshBasicMaterial({ color: look.ring, toneMapped: false, depthTest: false });
-    ownMaterials.push(surface);
-    const group = new T.Group();
-    const edge = new T.Mesh(beaconGeometry, beaconEdge);
-    edge.scale.setScalar(1.25);
-    edge.renderOrder = 5;
-    const mesh = new T.Mesh(beaconGeometry, surface);
-    mesh.renderOrder = 6;
-    group.add(edge, mesh);
-    group.rotation.x = Math.PI;
-    group.visible = false;
-    scene.add(group);
-    return group;
-  });
-  const beaconHeight: Record<Stop["to"], number> = { desk: 3, counter: 2.6, board: 1.9, shredder: 2.9, person: 3.7 };
-
   // Stamp progress: a horizontal bar over the critter's head, with a thin white outline so it reads on any floor
   const barWidth = 1.5;
   const barHeight = .26;
@@ -1380,8 +1356,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   const confetti = pool(confettiGeometry, 160, false);
   const puffs = pool(puffGeometry, 80, true);
   const confettiColours = [0xff6f8e, 0xffd35c, 0x5fe39a, 0x6eb7ff, 0xb48cff, 0xff9e5c];
-  // Chaos is mostly reds, with a hot orange for a bit of contrast
-  const discoColours = [0xff2b3d, 0xd6123c, 0xff5a5f, 0xff3d6e, 0xb80f2a, 0xff7a3a];
+  // Chaos is light reds throughout, with a soft coral for a bit of variety
+  const discoColours = [0xff8a92, 0xff7480, 0xffa3a9, 0xff8f9e, 0xff9aa0, 0xffa58f];
 
   function emit(target: typeof confetti, at: T.Vector3Like, count: number, options: { colours: number[]; speed: number; up: number; gravity: number; life: number; size: number }) {
     for (let n = 0; n < count; n++) {
@@ -2437,7 +2413,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   });
   const steps = new Float32Array(tileCount);
   const stepTints = tileBase.map(() => new T.Color());
-  const discoOff = new T.Color(0x4a2230);
+  // Tiles between the lit ones stay a softer, dimmer red rather than going dark
+  const discoOff = new T.Color(0xd9707b);
   const marqueeOn = new T.Color(0xffb347);
   const marqueeDim = new T.Color(0xffe2a8);
   const calmSky = new T.Color(0xfff3df);
@@ -2526,7 +2503,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         }
         if (discoMood > 0) {
           const shade = pattern(i % tileCols, Math.floor(i / tileCols), beat);
-          if (shade < 0) tint.lerp(discoOff, discoMood * .8);
+          if (shade < 0) tint.lerp(discoOff, discoMood);
           else {
             scratch.setHex(discoColours[shade]);
             tint.lerp(scratch, discoMood);
@@ -2558,8 +2535,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       const level = .75 + Math.sin(now * twinkle + i * 1.7) * .25;
       tint.setHex(bulbColours[i % bulbColours.length]).multiplyScalar(level);
       if (discoMood > 0) {
-        // Hues from crimson round to orange, matching the floor
-        scratch.setHSL(wrap(.96 + .1 * wrap(i / 6 - (still ? 0 : beatNow / 4), 1), 1), 1, .55 + .15 * pulse);
+        // Light reds round to coral, matching the floor
+        scratch.setHSL(wrap(.96 + .08 * wrap(i / 6 - (still ? 0 : beatNow / 4), 1), 1), 1, .72 + .1 * pulse);
         tint.lerp(scratch, discoMood);
       }
       bulbs.setColorAt(i, tint);
@@ -2619,18 +2596,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       const player = round.players[i];
       const lift = still ? 0 : Math.abs(Math.sin(now * 5)) * .18;
       marker.position.set(player.position.x, (heldCard(round, i) ? 5.1 : 2.9) + lift, player.position.z);
-    });
-
-    // Players heading for the same spot get their arrows side by side
-    const stops = round.players.map((_, i) => (round.phase === "playing" ? nextStop(round, i) : undefined));
-    beacons.forEach((beacon, i) => {
-      const stop = stops[i];
-      beacon.visible = Boolean(stop);
-      if (!stop) return;
-      const same = stops.flatMap((other, j) => (other && other.x === stop.x && other.z === stop.z ? [j] : []));
-      const shift = (same.indexOf(i) - (same.length - 1) / 2) * .6;
-      const bob = still ? 0 : Math.abs(Math.sin(now * 4 + i)) * .28;
-      beacon.position.set(stop.x + shift, beaconHeight[stop.to] + bob, stop.z);
     });
 
     const follow = T.MathUtils.clamp((round.players[focus ?? 0] ?? round.players[0]).position.x, -maxPan, maxPan);

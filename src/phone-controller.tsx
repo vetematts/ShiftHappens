@@ -21,7 +21,8 @@ function momentBetween(before: Status | null, after: Status): Moment | null {
   if ((after.stats?.pinned ?? 0) > (before.stats?.pinned ?? 0)) return { text: "Pinned! 📌", kind: "good", buzz: [30, 40, 30] };
   if ((after.stats?.stamped ?? 0) > (before.stats?.stamped ?? 0)) return { text: "Stamped ✓", kind: "good", buzz: 40 };
   if (after.news && after.news !== before.news) {
-    if (after.news.includes("cancelled")) return { text: "Cancelled! 📞", kind: "alert", buzz: [120, 60, 120] };
+    // Cancellations read "Sam can't make Mon AM: (excuse)"
+    if (after.news.includes("can't make") || after.news.includes("cancelled")) return { text: "Cancelled! 📞", kind: "alert", buzz: [120, 60, 120] };
     if (/Snatcher (is loose|grabbed)/.test(after.news)) return { text: "Snatcher! 🐦", kind: "alert", buzz: [120, 60, 120] };
   }
   return null;
@@ -221,6 +222,30 @@ export default function PhoneController({ code, local }: { code: string; local: 
           )}
           <button type="button" className="gp-start" onClick={startRound}>Play again</button>
         </section>
+      ) : !status || status.phase === "ready" ? (
+        // The lobby, Jackbox-style: who's in, and only the first player (the VIP) starts the round
+        <section className="gp-lobby" aria-live="polite">
+          <span className="gp-lobby-critter" aria-hidden="true">{critters[seat].emoji}</span>
+          <h1>You’re in!</h1>
+          <p>You’re the <b>{critters[seat].name}</b>. Find them on the big screen.</p>
+          <ul className="gp-lobby-players" aria-label="Players in the room">
+            {critters.map((other, i) => (
+              <li key={other.name} data-on={i === seat || Boolean(joined[i])} data-you={i === seat}>
+                <span aria-hidden="true">{other.emoji}</span>
+                <small>{i === seat ? "You" : joined[i] ? "In" : "Open"}</small>
+              </li>
+            ))}
+          </ul>
+          {vip === seat ? (
+            <>
+              <button type="button" className="gp-start" onClick={startRound}>Everybody’s in. Start!</button>
+              <p className="gp-lobby-note">{inRoom} player{inRoom === 1 ? "" : "s"} in. Wait for everyone to scan, then start.</p>
+            </>
+          ) : (
+            <p className="gp-lobby-note">Waiting for the {critters[vip].emoji} {critters[vip].name} to start the round…</p>
+          )}
+          <p className="gp-tip">Stick moves. Action grabs, stamps, passes and pins cards. Dash knocks over the Shift Snatcher.</p>
+        </section>
       ) : (
         <>
           <section className="gp-status" aria-live="polite">
@@ -230,12 +255,12 @@ export default function PhoneController({ code, local }: { code: string; local: 
               </b>
             )}
             {status?.boosted && playing && <b className="boost-tag">BOOST</b>}
-            <p>{!status ? "Connected" : playing ? (status.stamping ? "Stamping…" : status.prompt) : status.phase === "ready" ? "Ready when you are" : status.phase === "won" ? "Fully rostered!" : "Understaffed"}</p>
+            <p>{status.stamping ? "Stamping…" : status.prompt}</p>
             {status && <small>Roster {status.filled}/{status.needed} · {clock(status.time)} left{playing && <> · <span className={`gp-stage gp-stage--${status.stage}`}>{stageNames[status.stage]}</span></>}</small>}
             {status?.stamping && <progress className="gp-progress" value={status.stamp} max={1} aria-label="Approval progress" />}
             {status?.news && playing && <small className="gp-news">📞 {status.news}</small>}
           </section>
-          {playing ? (
+          {playing && (
             <section className="gp-controls">
               <div className="touch-stick gp-stick" onPointerDown={stickDown}
                 onPointerMove={event => event.pointerId === input.current.pointer && moveStick(event.clientX, event.clientY)}
@@ -254,13 +279,6 @@ export default function PhoneController({ code, local }: { code: string; local: 
                   {status?.stamping ? "Hold…" : "Action"}
                 </button>
               </div>
-            </section>
-          ) : (
-            <section className="gp-wait">
-              <button type="button" className="gp-start" onClick={startRound}>
-                {status?.phase === "ready" || !status ? "Start round" : "Play again"}
-              </button>
-              <p>Watch the big screen. Move with the stick. Action grabs, stamps, passes and pins cards. Chase employees to hand over open shifts. Dash bowls over the Shift Snatcher; grab ⚡ to recharge.</p>
             </section>
           )}
         </>

@@ -265,6 +265,8 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 .join-side h2 { font-size: clamp(1.6rem, 3vw, 2.3rem) !important; }
 .join-code { margin: 0; color: var(--muted); font-size: 1rem; }
 .join-code b { color: var(--sun); font-size: clamp(2rem, 4.4vw, 3.2rem); font-weight: 700; letter-spacing: .14em; vertical-align: middle; }
+.join-hint { margin: 0; color: var(--cream); font-size: .92rem; font-weight: 600; }
+.join-hint b { color: var(--sun); }
 .join-seats { display: grid; grid-template-columns: repeat(4, 1fr); gap: .45rem; margin: 0; padding: 0; list-style: none; }
 .join-seats li { display: grid; justify-items: center; gap: .1rem; padding: .55rem .3rem; border-radius: 1rem; background: rgb(255 255 255 / .06); border: 1px dashed rgb(255 255 255 / .25); color: var(--muted); font-size: .85rem; font-weight: 600; }
 .join-seats li span { font-size: 1.9rem; line-height: 1.1; filter: grayscale(.8); opacity: .55; }
@@ -393,6 +395,20 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 .gp-count { display: grid; align-content: center; justify-items: center; gap: .6rem; text-align: center; }
 .gp-count span { color: var(--gp); font-size: 9rem; font-weight: 700; line-height: 1; text-shadow: 0 .35rem 0 rgb(0 0 0 / .25); animation: count-pop .9s var(--spring) both; }
 .gp-count p { margin: 0; color: var(--muted); font-weight: 600; }
+
+/* A phone's lobby, Jackbox-style: your critter, who's in, and the VIP's start button */
+.gp-lobby { display: grid; align-content: center; justify-items: center; gap: .7rem; text-align: center; }
+.gp-lobby h1 { margin: 0; font-size: 2rem; font-weight: 700; }
+.gp-lobby > p { max-width: 20rem; margin: 0; color: var(--muted); }
+.gp-lobby > p b { color: var(--cream); }
+.gp-lobby-critter { display: grid; place-items: center; width: 7.5rem; height: 7.5rem; border-radius: 50%; background: color-mix(in srgb, var(--gp) 35%, transparent); box-shadow: 0 0 0 .35rem color-mix(in srgb, var(--gp) 55%, transparent); font-size: 4.5rem; line-height: 1; animation: count-pop .7s var(--spring) both; }
+.gp-lobby-players { display: flex; gap: .5rem; margin: .2rem 0; padding: 0; list-style: none; }
+.gp-lobby-players li { display: grid; justify-items: center; gap: .1rem; width: 4rem; padding: .45rem 0; border-radius: .9rem; background: rgb(255 255 255 / .06); border: 1px dashed rgb(255 255 255 / .2); opacity: .45; font-size: 1.8rem; line-height: 1; }
+.gp-lobby-players li[data-on=true] { opacity: 1; border-style: solid; background: rgb(255 255 255 / .12); animation: rise .4s var(--spring) backwards; }
+.gp-lobby-players li[data-you=true] { border-color: var(--gp); box-shadow: 0 0 0 .15rem color-mix(in srgb, var(--gp) 60%, transparent); }
+.gp-lobby-players small { color: var(--muted); font-size: .7rem; font-weight: 600; }
+.gp-lobby .gp-lobby-note { color: var(--cream); font-weight: 600; }
+.gp-lobby .gp-tip { margin-top: .4rem; font-size: .82rem; }
 
 /* A phone's own results */
 .gp-results { display: grid; align-content: center; justify-items: center; gap: .75rem; text-align: center; }

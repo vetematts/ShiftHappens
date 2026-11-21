@@ -76,6 +76,8 @@ The game pings the relay as soon as the page opens, to start waking it. On demo 
 
 To try the relay on one computer: `cd server && npm install && npm start`, then add `?relay=ws://localhost:8787` to the game's address.
 
+**Testing with real phones locally.** `npm run dev` also listens on your network, and on `localhost` the QR code points phones at this computer's Wi-Fi address (the `Network:` line Vite prints) instead of `localhost`, which a phone can't open. The phones must be on the same Wi-Fi as the computer.
+
 **Testing without phones.** Add `?link=local` to the laptop's address and select the **Phones** tile. Then open `index.html#join-CODE-local` in other tabs of the same browser, with the room code in place of `CODE`. The tabs talk through the browser instead of the network.
 
 ## Run it yourself

@@ -200,12 +200,12 @@ export const settings = {
   cancelWarning: 3,
   /** Seconds between Shift Snatcher visits (none while calm). */
   snatcherEvery: { calm: Infinity, busy: 16, chaos: 10 } as Record<Stage, number>,
-  snatcherSpeed: { calm: 2.4, busy: 2.4, chaos: 3.4 } as Record<Stage, number>,
+  snatcherSpeed: { calm: 2.6, busy: 2.6, chaos: 3.5 } as Record<Stage, number>,
   /** How long the Snatcher is dazed after a dash knocks it. */
   snatcherDaze: .9,
   /** How close a dashing player must get to knock the Snatcher. */
   knockReach: 1.05,
-  speed: 6.4,
+  speed: 8.0,
   dashSpeed: 16,
   dashTime: .16,
   dashCooldown: .35,
@@ -226,9 +226,9 @@ export const settings = {
   body: .42,
   /** Employees wandering the office. Each yellow open shift is for one of them: chase them down to hand it over. */
   staffCount: 3,
-  staffSpeed: 1.3,
-  /** After reaching each spot, the chance an employee stops for a moment (otherwise they keep strolling). */
-  staffPauseChance: .2,
+  staffSpeed: 1.5,
+  /** After crossing the room, the chance an employee stops for a moment (otherwise they set off again). */
+  staffPauseChance: .08,
   /** Employees are solid: their body radius, and how close you must be to feel crowded (and slowed). */
   staffBody: .38,
   crowdReach: 1.15,
@@ -237,38 +237,33 @@ export const settings = {
 };
 
 /** Board columns, one per day, centred on the office. */
-export const columnGap = 2.06;
+export const columnGap = 2.5;
 export const columnX = (day: number) => (day - 3) * columnGap;
 
 export type Point = { x: number; z: number };
 
 /**
- * The office floor runs x −9.25…9.25 (west → east) and z −5.1…5.1 (north/back wall → south/front).
- * The camera looks from the south. A counter splits the room along z = 0 from the west wall to x = 5.1,
+ * The office floor runs x −11.5…11.5 (west → east) and z −6.6…6.6 (north/back wall → south/front).
+ * The camera looks from the south. A counter splits the room along z = 0 from the west wall to x = 6.4,
  * leaving a walkable gap on the east side.
  *
  *   North half (back):  Roster Board along the back wall · Shredder (west) · Exit door (east wall)
  *   South half (front): Request Tray (west) · Manager's Desk (middle)
- *   Employees wander their own patches on both halves (see `staffZones`).
+ *   Employees roam the whole office end to end, using the gap to switch halves.
  */
 export const office = {
-  bounds: { x: 9.25, z: 5.1 },
-  counterRight: 5.1,
+  bounds: { x: 11.5, z: 6.6 },
+  counterRight: 6.4,
   counterDepth: .48,
-  tray: { x: -6.4, z: 3.4 },
-  desk: { x: -.55, z: 3.4 },
-  boardZ: -4.35,
-  pass: [-4.7, -2.6, -.5, 1.6].map(x => ({ x, z: 0 })),
+  tray: { x: -8.0, z: 4.4 },
+  desk: { x: -.7, z: 4.4 },
+  /** The line players stand on to reach the Roster Board, which hangs on the back wall behind it. */
+  boardZ: -5.85,
+  pass: [-6.0, -3.0, 0, 3.0].map(x => ({ x, z: 0 })),
   /** The door the Shift Snatcher sneaks in from and runs out of, on the east wall. */
-  exit: { x: 8.85, z: -3.3 },
-  /** The patch of floor each wandering employee keeps to (centre and size): south-east, board side, south-middle. */
-  staffZones: [
-    { x: 6.6, z: 3.2, w: 4.2, d: 2.8 },
-    { x: -.4, z: -2.0, w: 9, d: 1.4 },
-    { x: 2.7, z: 1.9, w: 3.0, d: 2.0 },
-  ],
+  exit: { x: 11.1, z: -4.3 },
   /** Where players start, by player index. */
-  spawns: [{ x: -5.3, z: 2.05 }, { x: -.5, z: -1.3 }, { x: 2.8, z: 2.05 }, { x: -4.0, z: -1.6 }],
+  spawns: [{ x: -6.6, z: 2.6 }, { x: -.6, z: -1.7 }, { x: 3.5, z: 2.6 }, { x: -5.0, z: -2.1 }],
 };
 
 /** A solid piece of furniture: centre plus full width (x) and depth (z). */
@@ -278,11 +273,11 @@ export type Block = Point & { w: number; d: number };
 export const furniture = {
   inbox: { ...office.tray, w: 3.3, d: 1.5 },
   desk: { ...office.desk, w: 3.5, d: 1.2 },
-  shredder: { x: -8.85, z: -2.1, w: .9, d: 1.0 },
-  plants: [{ x: -9.05, z: -4.75, size: 1 }, { x: 9.05, z: -4.75, size: 1.1 }, { x: 9.1, z: 4.75, size: .9 }]
+  shredder: { x: -11.05, z: -2.7, w: .9, d: 1.0 },
+  plants: [{ x: -11.3, z: -6.25, size: 1 }, { x: 11.3, z: -6.25, size: 1.1 }, { x: 11.35, z: 6.25, size: .9 }]
     .map(({ x, z, size }) => ({ x, z, w: .8 * size, d: .8 * size, size })),
-  cooler: { x: -9.05, z: 4.7, w: .6, d: .6 },
-  coffee: { x: 9.1, z: -.95, w: .7, d: 1.3 },
+  cooler: { x: -11.3, z: 6.2, w: .6, d: .6 },
+  coffee: { x: 11.35, z: -1.3, w: .7, d: 1.3 },
 };
 
 const blocks: Block[] = [
@@ -357,20 +352,22 @@ export type Staff = Person & { id: number };
 
 export type Npc =
   /**
-   * An employee wandering their patch of the office (`office.staffZones[zone]`). They are solid and slow players
-   * who brush past. A yellow open shift names one of them (`card.worker`); their bubble flashes while it's carried.
+   * An employee strolling from one end of the office to the other. They are solid and slow players who brush
+   * past. A yellow open shift names one of them (`card.worker`); their bubble flashes while it's carried.
    */
   | {
     kind: "staff";
     id: number;
     /** Index into `round.staff`. */
     person: number;
-    zone: number;
     point: Point;
     facing: number;
-    /** Where they are strolling to, and when they set off again after arriving. */
-    goal: Point;
+    /** The rest of their walk, via the counter gap when they change halves. The last point is where they're headed. */
+    path: Point[];
+    /** When they set off again after a pause. */
     waitUntil: number;
+    /** Seconds without progress; past a limit they pick somewhere else to go. */
+    stuck: number;
     moving: boolean;
   }
   /** The bin chicken that steals pinned cards and runs for the exit. */
@@ -507,7 +504,7 @@ export function columnAt(point: Point) {
 }
 
 export function atBoard(point: Point) {
-  return point.z <= office.boardZ + settings.reach && Math.abs(point.x) <= 7.8;
+  return point.z <= office.boardZ + settings.reach && Math.abs(point.x) <= columnX(6) + columnGap * .7;
 }
 
 export const atDesk = (point: Point) => nearStation(point, furniture.desk);
@@ -575,15 +572,33 @@ const shuffle = <T,>(list: T[]) => {
   return copy;
 };
 
-/** A random walkable spot inside a zone, for an employee to stroll to; a decent walk away from `from` if given. */
-function spotIn(zone: number, from?: Point): Point {
-  const { x, z, w, d } = office.staffZones[zone % office.staffZones.length];
-  for (let tries = 0; tries < 40; tries++) {
-    const point = { x: x + (Math.random() - .5) * w, z: z + (Math.random() - .5) * d };
-    const farEnough = !from || tries > 30 || Math.hypot(point.x - from.x, point.z - from.z) > Math.min(w, 2.4) * .8;
-    if (farEnough && walkable(point, settings.staffBody)) return point;
+/** Somewhere across the office from `from` for an employee to walk to, on either half. */
+function farSpot(from: Point): Point {
+  const { x: wide, z: deep } = office.bounds;
+  for (let tries = 0; tries < 60; tries++) {
+    // Always the far end: the opposite side of the room from where they are now
+    const end = -Math.sign(from.x || (Math.random() - .5));
+    const point = { x: end * (wide * .45 + Math.random() * (wide * .55 - 1)), z: office.boardZ + 1 + Math.random() * (deep - office.boardZ - 1.8) };
+    if (walkable(point, settings.staffBody)) return point;
   }
-  return { x, z };
+  return { x: -Math.sign(from.x || 1) * (wide - 2), z: from.z };
+}
+
+/** The walk to `to`: straight there, or round through the counter gap when it's on the other half. */
+function routeTo(from: Point, to: Point): Point[] {
+  const side = (point: Point) => Math.sign(point.z);
+  const blocked = (point: Point) => point.x < office.counterRight + 1;
+  if (side(from) === side(to) || (!blocked(from) && !blocked(to))) return [to];
+  const gapX = (office.counterRight + office.bounds.x) / 2 - .4;
+  return [{ x: gapX, z: side(from) * 1.6 }, { x: gapX, z: side(to) * 1.6 }, to];
+}
+
+/** Starting spots spread along the room, alternating halves, clear of where the players start. */
+function startSpot(index: number, count: number): Point {
+  const x = -office.bounds.x + 2 + (index + .5) * (office.bounds.x * 2 - 4) / Math.max(1, count);
+  const spot = { x, z: index % 2 ? -3.4 : 1.6 };
+  const crowded = office.spawns.some(start => Math.hypot(start.x - spot.x, start.z - spot.z) < 2);
+  return crowded ? { x: x + 2.2, z: spot.z } : spot;
 }
 
 /** A fresh round. `players` is how many helper critters are in the office (2–4). */
@@ -613,8 +628,11 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     openQueue: [],
     players: Array.from({ length: count }, (_, i) => makePlayer(i)),
     npcs: wanderers.map((person, i) => {
-      const point = spotIn(i);
-      return { kind: "staff" as const, id: i, person, zone: i, point, facing: 0, goal: { ...point }, waitUntil: Math.random() * 2, moving: false };
+      const point = startSpot(i, wanderers.length);
+      return {
+        kind: "staff" as const, id: i, person, point, facing: 0, path: routeTo(point, farSpot(point)),
+        waitUntil: Math.random(), stuck: 0, moving: false,
+      };
     }),
     bolts: [],
     nextBolt: 10,
@@ -697,31 +715,53 @@ function coverFor(round: Round) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/** Employees keep strolling around their patch, only occasionally stopping, and turn away rather than walk into a player. */
+/** Employees walk from one end of the office to the other, rarely stopping, and step round furniture and players. */
 function stepStaff(round: Round, seconds: number) {
   const people = wanderers(round);
   people.forEach(npc => {
     npc.moving = false;
     if (round.elapsed < npc.waitUntil) return;
-    const dx = npc.goal.x - npc.point.x;
-    const dz = npc.goal.z - npc.point.z;
+    if (!npc.path.length) npc.path = routeTo(npc.point, farSpot(npc.point));
+    const goal = npc.path[0];
+    const dx = goal.x - npc.point.x;
+    const dz = goal.z - npc.point.z;
     const length = Math.hypot(dx, dz);
-    if (length < .05) {
-      npc.goal = spotIn(npc.zone, npc.point);
-      if (Math.random() < settings.staffPauseChance) npc.waitUntil = round.elapsed + 1 + Math.random();
+    if (length < .1) {
+      npc.path.shift();
+      if (!npc.path.length) {
+        npc.path = routeTo(npc.point, farSpot(npc.point));
+        if (Math.random() < settings.staffPauseChance) npc.waitUntil = round.elapsed + .8 + Math.random() * .7;
+      }
       return;
     }
     const step = Math.min(length, settings.staffSpeed * seconds);
-    const next = { x: npc.point.x + dx / length * step, z: npc.point.z + dz / length * step };
-    const blocked = !walkable(next, settings.staffBody)
-      || round.players.some(player => Math.hypot(player.position.x - next.x, player.position.z - next.z) < settings.body + settings.staffBody + .05)
-      || people.some(other => other !== npc && Math.hypot(other.point.x - next.x, other.point.z - next.z) < settings.staffBody * 2);
+    const ux = dx / length * step;
+    const uz = dz / length * step;
+    // Like players, they never step closer to someone they're touching, but can always step away
+    const roomFrom = (other: Point, next: Point, gap: number) => {
+      const after = Math.hypot(other.x - next.x, other.z - next.z);
+      return after >= gap || after > Math.hypot(other.x - npc.point.x, other.z - npc.point.z);
+    };
+    const free = (next: Point) => walkable(next, settings.staffBody)
+      && round.players.every(player => roomFrom(player.position, next, settings.body + settings.staffBody + .05))
+      && people.every(other => other === npc || roomFrom(other.point, next, settings.staffBody * 2));
+    // Straight on if possible, otherwise slide along whatever is in the way
+    const options = [{ x: npc.point.x + ux, z: npc.point.z + uz }, { x: npc.point.x + ux, z: npc.point.z }, { x: npc.point.x, z: npc.point.z + uz }];
+    const next = options.find(free);
     npc.facing = Math.atan2(dx, dz);
-    if (blocked) {
-      // Turn and head somewhere else, after the briefest hesitation
-      npc.goal = spotIn(npc.zone, npc.point);
-      npc.waitUntil = round.elapsed + .15;
+    if (!next) {
+      npc.stuck += seconds;
+      if (npc.stuck > 1.2) {
+        npc.stuck = 0;
+        npc.path = routeTo(npc.point, farSpot(npc.point));
+      }
       return;
+    }
+    const progress = Math.hypot(next.x - npc.point.x, next.z - npc.point.z);
+    npc.stuck = progress < step * .3 ? npc.stuck + seconds : 0;
+    if (npc.stuck > 1.2) {
+      npc.stuck = 0;
+      npc.path = routeTo(npc.point, farSpot(npc.point));
     }
     npc.point = next;
     npc.moving = true;
@@ -735,7 +775,7 @@ function stepBolts(round: Round) {
     round.nextBolt = round.elapsed + min + Math.random() * (max - min);
     if (round.bolts.length < settings.maxBolts) {
       for (let tries = 0; tries < 40; tries++) {
-        const point = { x: (Math.random() * 2 - 1) * 8.4, z: (Math.random() * 2 - 1) * 4.4 };
+        const point = { x: (Math.random() * 2 - 1) * (office.bounds.x - 1), z: (Math.random() * 2 - 1) * (office.bounds.z - .8) };
         const clear = walkable(point, .6)
           && point.z > office.boardZ + 1.6
           && [furniture.inbox, furniture.desk, furniture.shredder].every(block => edgeDistance(point, block) > 1.3)
@@ -1234,7 +1274,7 @@ export function interact(round: Round, index: number) {
       }
       card.approved = true;
       // They stop for a moment to take it
-      npc.waitUntil = round.elapsed + .8;
+        npc.waitUntil = round.elapsed + .8;
       round.stats[index].accepted++;
       fx(round, "accept", npc.point, { player: index, card: card.id });
       return;

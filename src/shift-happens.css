@@ -248,6 +248,11 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 .awards small { color: var(--muted); font-size: .75rem; }
 .phones-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
 
+/* × in the corner of setup, how to play and the phone lobby (Esc and clicking outside do the same) */
+.panel-close { position: absolute; top: .8rem; right: .8rem; z-index: 2; display: grid; place-items: center; width: 2.4rem; height: 2.4rem; min-height: 0; margin: 0; padding: 0 0 .15rem; border: 1px solid var(--edge); border-radius: 50%; background: rgb(255 255 255 / .1); color: var(--cream); font-size: 1.5rem; font-weight: 500; line-height: 1; transition: transform .25s var(--spring), background .2s; }
+.panel-close:hover { filter: none; background: rgb(255 255 255 / .18); transform: rotate(90deg); }
+.screen--help, .screen--setup, .screen--join { cursor: default; }
+
 /* Join screen while phones are on: one big QR code that scans from across the room, the room code and who's in */
 .screen--join { justify-items: center; align-items: center; padding: 4.6rem 1rem 1rem; background: rgb(29 22 56 / .55); backdrop-filter: blur(6px); }
 .panel-join { width: auto; max-width: 100%; grid-template-columns: auto minmax(16rem, 24rem); align-items: center; gap: clamp(1rem, 3vw, 2.4rem); padding: clamp(1rem, 2.4vw, 1.8rem); }
@@ -490,3 +495,5 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
   .touch-action { width: 5.6rem; height: 5.6rem; font-size: .76rem; }
   .screen--menu { place-items: center end; }
 }
+.panel-wide .setup-head { padding-right: 4rem; }
+.panel-help > .kicker, .panel-help > h2 { padding-right: 2.6rem; }

@@ -213,8 +213,8 @@ export const settings = {
   dashCharges: 3,
   dashRegen: 9,
   /** ⚡ pickups on the floor: a new one every few seconds (at most `maxBolts` lying around). */
-  boltEvery: { min: 5, max: 9 },
-  maxBolts: 2,
+  boltEvery: { min: 12, max: 18 },
+  maxBolts: 1,
   boltReach: .8,
   /** Grabbing a ⚡ with full charges gives a speed boost instead. */
   boostTime: 4,
@@ -227,6 +227,8 @@ export const settings = {
   /** Employees wandering the office. Each yellow open shift is for one of them: chase them down to hand it over. */
   staffCount: 3,
   staffSpeed: 1.3,
+  /** After reaching each spot, the chance an employee stops for a moment (otherwise they keep strolling). */
+  staffPauseChance: .2,
   /** Employees are solid: their body radius, and how close you must be to feel crowded (and slowed). */
   staffBody: .38,
   crowdReach: 1.15,
@@ -573,12 +575,13 @@ const shuffle = <T,>(list: T[]) => {
   return copy;
 };
 
-/** A random walkable spot inside a zone, for an employee to stroll to. */
-function spotIn(zone: number): Point {
+/** A random walkable spot inside a zone, for an employee to stroll to; a decent walk away from `from` if given. */
+function spotIn(zone: number, from?: Point): Point {
   const { x, z, w, d } = office.staffZones[zone % office.staffZones.length];
-  for (let tries = 0; tries < 30; tries++) {
+  for (let tries = 0; tries < 40; tries++) {
     const point = { x: x + (Math.random() - .5) * w, z: z + (Math.random() - .5) * d };
-    if (walkable(point, settings.staffBody)) return point;
+    const farEnough = !from || tries > 30 || Math.hypot(point.x - from.x, point.z - from.z) > Math.min(w, 2.4) * .8;
+    if (farEnough && walkable(point, settings.staffBody)) return point;
   }
   return { x, z };
 }
@@ -614,7 +617,7 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
       return { kind: "staff" as const, id: i, person, zone: i, point, facing: 0, goal: { ...point }, waitUntil: Math.random() * 2, moving: false };
     }),
     bolts: [],
-    nextBolt: 4,
+    nextBolt: 10,
     boltSeq: 0,
     stats: Array.from({ length: count }, noStats),
     fx: [],
@@ -694,7 +697,7 @@ function coverFor(round: Round) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/** Employees stroll around their patch, pausing now and then, and wait rather than walk into a player. */
+/** Employees keep strolling around their patch, only occasionally stopping, and turn away rather than walk into a player. */
 function stepStaff(round: Round, seconds: number) {
   const people = wanderers(round);
   people.forEach(npc => {
@@ -704,8 +707,8 @@ function stepStaff(round: Round, seconds: number) {
     const dz = npc.goal.z - npc.point.z;
     const length = Math.hypot(dx, dz);
     if (length < .05) {
-      npc.goal = spotIn(npc.zone);
-      npc.waitUntil = round.elapsed + .6 + Math.random() * 1.8;
+      npc.goal = spotIn(npc.zone, npc.point);
+      if (Math.random() < settings.staffPauseChance) npc.waitUntil = round.elapsed + 1 + Math.random();
       return;
     }
     const step = Math.min(length, settings.staffSpeed * seconds);
@@ -715,9 +718,9 @@ function stepStaff(round: Round, seconds: number) {
       || people.some(other => other !== npc && Math.hypot(other.point.x - next.x, other.point.z - next.z) < settings.staffBody * 2);
     npc.facing = Math.atan2(dx, dz);
     if (blocked) {
-      // Wait a moment, then try somewhere else
-      npc.goal = spotIn(npc.zone);
-      npc.waitUntil = round.elapsed + .4;
+      // Turn and head somewhere else, after the briefest hesitation
+      npc.goal = spotIn(npc.zone, npc.point);
+      npc.waitUntil = round.elapsed + .15;
       return;
     }
     npc.point = next;

@@ -427,10 +427,22 @@ function Game() {
       const shown = (selector: string) => [...page.querySelectorAll<HTMLElement>(selector)]
         .map(element => element.getBoundingClientRect()).filter(box => box.width > 0 && box.height > 0);
       const hudBottom = Math.max(0, ...shown(".hud, .week-strip").map(box => box.bottom - stage.top));
-      page.style.setProperty("--hud-bottom", `${Math.round(hudBottom)}px`);
-      const toastLane = 54;
       const lowest = shown(".pads, .touch").map(box => stage.bottom - box.top);
-      world.setInsets(hudBottom + toastLane, Math.max(0, ...lowest) + 6);
+      const gap = 10;
+      world.setInsets(hudBottom + gap, Math.max(0, ...lowest) + gap);
+      // News toasts take the week strip's place while they show, as wide as the gap between the logo and the stats
+      const [strip] = shown(".week-strip");
+      const [stats] = shown(".hud-stats");
+      if (strip && stats) {
+        const [brand] = shown(".brand");
+        const centre = stage.left + stage.width / 2;
+        const ownRow = strip.top >= stats.bottom - 2;
+        const room = ownRow ? stage.width - 16
+          : 2 * Math.min(centre - (brand?.right ?? stage.left), stats.left - centre) - 24;
+        page.style.setProperty("--strip-top", `${Math.round(strip.top - stage.top)}px`);
+        page.style.setProperty("--strip-height", `${Math.round(strip.height)}px`);
+        page.style.setProperty("--news-width", `${Math.round(Math.max(strip.width, room))}px`);
+      }
     }
     let lastBroadcast = 0;
     let displayedPhase: Round["phase"] | undefined;
@@ -678,7 +690,7 @@ function Game() {
         </header>
 
         {playing && (
-          <ol className="week-strip" aria-label="Roster Board">
+          <ol className="week-strip" aria-label="Roster Board" data-covered={Boolean(view.news)}>
             {days.map((day, d) => (
               <li key={day} data-state={view.strip[d].state === "closed" && view.strip[d + 7].state === "closed" ? "closed" : undefined}>
                 <b>{day}</b>

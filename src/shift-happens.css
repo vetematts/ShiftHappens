@@ -77,7 +77,9 @@ body:has(.sh), body:has(.gp) { margin: 0; overflow: hidden; background: #1d1638;
 .banner[data-stage=chaos] { background: linear-gradient(180deg, #ff7d93, #e0405f); box-shadow: 0 .4rem 0 #9f2038, 0 1.2rem 3rem rgb(0 0 0 / .3); }
 
 /* Office news */
-.toast { position: absolute; top: calc(var(--hud-bottom, 5.6rem) + .45rem); left: 50%; display: flex; align-items: center; gap: .45rem; max-width: min(48rem, calc(100% - 2rem)); margin: 0; padding: .55rem 1rem; border-radius: 1.2rem; background: linear-gradient(180deg, #ff8cb5, #ff5f8f); color: #fff; box-shadow: 0 .3rem 0 #c23a64, 0 1rem 2rem rgb(120 20 60 / .3); font-weight: 600; transform: translateX(-50%); animation: drop .5s var(--spring); pointer-events: none; }
+/* A news toast sits exactly where the week strip is (the strip hides meanwhile), so it never covers the office */
+.toast { position: absolute; top: var(--strip-top, .85rem); left: 50%; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: .45rem; min-height: var(--strip-height, 4.4rem); width: max-content; max-width: min(var(--news-width, 48rem), calc(100% - 1rem)); margin: 0; padding: .45rem 1.1rem; border-radius: 1.1rem; background: linear-gradient(180deg, #ff8cb5, #ff5f8f); color: #fff; box-shadow: 0 .3rem 0 #c23a64, 0 1rem 2rem rgb(120 20 60 / .3); font-size: 1.05rem; font-weight: 600; line-height: 1.25; text-align: center; transform: translateX(-50%); animation: drop .5s var(--spring); pointer-events: none; }
+.week-strip[data-covered=true] { visibility: hidden; }
 .toast span { display: inline-block; animation: ring .25s ease-in-out 6 alternate; }
 
 /* Player cards along the bottom (keyboard): one per critter, 2 to 4 */

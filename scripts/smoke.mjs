@@ -50,7 +50,7 @@ await waitFor(`http://127.0.0.1:${pagePort}/`);
 
 run(browser, [
   "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${mkdtempSync(join(tmpdir(), "smoke-"))}`,
-  "--window-size=1400,950", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required",
+  `--window-size=${process.env.SMOKE_SIZE ?? "1400,950"}`, "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--autoplay-policy=no-user-gesture-required",
   "--no-first-run", "about:blank",
 ]);
 await waitFor(`http://127.0.0.1:${debugPort}/json/version`);

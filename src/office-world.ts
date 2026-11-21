@@ -1170,7 +1170,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   const camera = new T.PerspectiveCamera(30, 1, .5, 140);
   const focus = new T.Vector3(0, .5, .1);
   const corners = [-10.3, 10.3].flatMap(x => [
-    new T.Vector3(x, -.5, 6.1), new T.Vector3(x, -.5, -6), new T.Vector3(x, 3.15, -5.9),
+    // Front bottom edge of the island base, back floor corner, and the top of the back wall
+    new T.Vector3(x, -.9, 6.15), new T.Vector3(x, -.5, -6), new T.Vector3(x, 3.15, -5.9),
   ]);
   const ndc = new T.Vector3();
   const yaw = 0;
@@ -1189,40 +1190,70 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     camera.aspect = aspect;
     camera.fov = tall ? 36 : 30;
     camera.updateProjectionMatrix();
-    const pitch = tall ? 1.08 : .9;
-    const direction = new T.Vector3(0, Math.sin(pitch), Math.cos(pitch));
+    const direction = new T.Vector3();
     const top = Math.min(.95, 1 - 2 * insetTop / height);
     const bottom = Math.max(touch && tall ? -.6 : touch ? -.9 : -.95, -1 + 2 * insetBottom / height);
     const span = tall ? Math.max(4.2, 10.3 * aspect * .95) : Infinity;
+    // The room fits when it is narrow enough and its height on screen fits the band; centring comes after.
     const fits = (distance: number) => {
       camera.position.copy(focus).addScaledVector(direction, distance);
       camera.lookAt(focus);
       camera.updateMatrixWorld();
-      return corners.every(point => {
+      let high = -Infinity;
+      let low = Infinity;
+      let wide = 0;
+      corners.forEach(point => {
         ndc.set(Math.max(-span, Math.min(span, point.x)), point.y, point.z).project(camera);
-        return Math.abs(ndc.x) <= .97 && ndc.y <= top && ndc.y >= bottom;
+        high = Math.max(high, ndc.y);
+        low = Math.min(low, ndc.y);
+        wide = Math.max(wide, Math.abs(ndc.x));
       });
+      return wide <= .97 && high - low <= top - bottom;
     };
-    let near = 8;
-    let far = 120;
-    for (let i = 0; i < 24; i++) {
-      const middle = (near + far) / 2;
-      if (fits(middle)) far = middle;
-      else near = middle;
+    // Closest camera distance at which the room fits, for a given tilt
+    const closest = (pitch: number) => {
+      direction.set(0, Math.sin(pitch), Math.cos(pitch));
+      let near = 8;
+      let far = 120;
+      for (let i = 0; i < 24; i++) {
+        const middle = (near + far) / 2;
+        if (fits(middle)) far = middle;
+        else near = middle;
+      }
+      return far;
+    };
+    // Landscape screens use the usual three-quarter view. When the room runs out of width before height
+    // (squarer windows), tilt a little more top-down so the spare height makes the room bigger instead of empty.
+    let pitch = tall ? 1.08 : .9;
+    let far = closest(pitch);
+    if (!tall) {
+      for (const steeper of [.95, 1.0, 1.05, 1.1]) {
+        const distance = closest(steeper);
+        if (distance < far * .985) {
+          pitch = steeper;
+          far = distance;
+        }
+      }
+      far = closest(pitch);
     }
-    // Centre the room vertically within the allowed band
+    // Centre the room vertically within the allowed band. Perspective makes one step inexact, so refine a few times.
     fits(far);
-    let high = -Infinity;
-    let low = Infinity;
-    corners.forEach(point => {
-      ndc.copy(point).project(camera);
-      high = Math.max(high, ndc.y);
-      low = Math.min(low, ndc.y);
-    });
-    const lift = ((high + low) / 2 - (top + bottom) / 2) * Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * far;
     const cameraUp = new T.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-    camera.position.addScaledVector(cameraUp, lift);
-    camera.lookAt(focus.clone().addScaledVector(cameraUp, lift));
+    const aim = focus.clone();
+    for (let step = 0; step < 4; step++) {
+      let high = -Infinity;
+      let low = Infinity;
+      corners.forEach(point => {
+        ndc.set(Math.max(-span, Math.min(span, point.x)), point.y, point.z).project(camera);
+        high = Math.max(high, ndc.y);
+        low = Math.min(low, ndc.y);
+      });
+      const lift = ((high + low) / 2 - (top + bottom) / 2) * Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * far;
+      camera.position.addScaledVector(cameraUp, lift);
+      aim.addScaledVector(cameraUp, lift);
+      camera.lookAt(aim);
+      camera.updateMatrixWorld();
+    }
     basePosition.copy(camera.position);
     const halfView = Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * aspect * far;
     maxPan = tall ? Math.max(0, 10.4 - halfView * .92) : 0;

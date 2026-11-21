@@ -19,7 +19,7 @@ npm run typecheck  # tsc (noEmit, strict); covers src/ only, not scripts/
 npm run lint       # eslint . (covers scripts/ too)
 node --experimental-strip-types scripts/simulate.ts            # bots play 200 rounds per player count, prints win rates
 node --experimental-strip-types scripts/simulate.ts 1 verbose  # one round, printing the board as it goes
-node scripts/smoke.mjs   # after npm run build: plays the build in headless Edge, screenshots to smoke-out/
+node scripts/smoke.mjs   # after npm run build: plays the build in headless Edge or Chrome, screenshots to smoke-out/
 ```
 
 There is no unit test suite. The simulator is the check for rule changes. On Node 22.18+ the `--experimental-strip-types` flag can be dropped. CI (`.github/workflows/pages-demo.yml`) runs typecheck and lint on pushes and PRs to `main`, but they don't block the deploy. Every push to `main` publishes to Pages.

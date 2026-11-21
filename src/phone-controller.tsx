@@ -107,6 +107,11 @@ export default function PhoneController({ code, local }: { code: string; local: 
     link.current?.send({ t: "start" }, host.current ?? undefined);
   }
 
+  function imReady() {
+    link.current?.send({ t: "ready" }, host.current ?? undefined);
+    if (navigator.vibrate) navigator.vibrate(20);
+  }
+
   function sendNow() {
     if (!host.current || !link.current) return;
     const { x, y, act, dash } = input.current;
@@ -157,6 +162,7 @@ export default function PhoneController({ code, local }: { code: string; local: 
   const critter = seat !== null && seat >= 0 ? critters[seat] : null;
   const playing = status?.phase === "playing";
   const countdown = status?.countdown ?? 0;
+  const briefing = status?.briefing ?? 0;
 
   return (
     <main className="gp" onContextMenu={event => event.preventDefault()} style={{ "--gp": critter?.colour ?? "#efe7ff" } as CSSProperties}>
@@ -177,6 +183,20 @@ export default function PhoneController({ code, local }: { code: string; local: 
         <section className="gp-wait">
           <h1>All four critters are taken</h1>
           <p>Four phones are already playing. Keep this open and you’ll jump in as soon as one leaves.</p>
+        </section>
+      ) : briefing > 0 ? (
+        <section className="gp-brief" aria-live="polite">
+          <h1>Roster everyone <em>now!!!</em></h1>
+          <p className="gp-brief-look"><span aria-hidden="true">👀</span> Look at the big screen</p>
+          <ul className="gp-brief-keys" aria-label="Your controls">
+            <li><span aria-hidden="true">🕹️</span><b>Stick: move</b></li>
+            <li><span className="gp-brief-action">Action</span><b>Grab · hold to stamp · pin</b></li>
+            <li><span aria-hidden="true">⚡</span><b>Dash: bump the chicken</b></li>
+          </ul>
+          <button type="button" className="gp-start" data-ready={Boolean(status?.ready)} onClick={imReady} disabled={Boolean(status?.ready)}>
+            {status?.ready ? "Ready ✓" : "I’m ready!"}
+          </button>
+          <small className="gp-brief-look">Starting in {briefing}</small>
         </section>
       ) : countdown > 0 ? (
         <section className="gp-count" aria-live="assertive">

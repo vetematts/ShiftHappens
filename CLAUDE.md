@@ -37,7 +37,7 @@ URL switches for testing in the browser:
 
 **Shared geometry.** `round.ts` defines the office layout (`office`, `furniture`, `columnX`, `traySpot`, `slotFloor`). Collision, reach and NPC paths use it, and the 3D world draws furniture from the same numbers. Move furniture in `round.ts` and both follow.
 
-**Game loop.** `src/shift-happens.tsx` owns the `requestAnimationFrame` loop. The `Round` lives in a ref and is mutated in place. Each frame it merges keyboard, touch and phone input per player, converts screen directions to world directions with `world.toWorld`, calls `walk` and `stepRound`, and then `world.draw`. It also plays the last-10-seconds tick and sets the background music tempo (`sound.setMusic`, faster per stage via `musicTempo` and again near the end). React re-renders the HUD only through a throttled `snapshot(state)`. A 3-2-1 countdown runs before `beginRound`.
+**Game loop.** `src/shift-happens.tsx` owns the `requestAnimationFrame` loop. The `Round` lives in a ref and is mutated in place. Each frame it merges keyboard, touch and phone input per player, converts screen directions to world directions with `world.toWorld`, calls `walk` and `stepRound`, and then `world.draw`. It also plays the last-10-seconds tick and sets the background music tempo (`sound.setMusic`, faster per stage via `musicTempo` and again near the end). React re-renders the HUD only through a throttled `snapshot(state)`. Starting from the menu or join screen first shows the rules screen (`briefing.tsx`, `briefUntil`) until the host presses Let’s go/Enter, every phone sends `ready`, or `briefSeconds` pass; Play again skips it. Then a 3-2-1 countdown runs before `beginRound`.
 
 **Routing.** `ShiftHappens` (default export) checks the URL hash. `#join-CODE[-local]` renders `PhoneController`, and anything else renders the game.
 
@@ -45,7 +45,7 @@ URL switches for testing in the browser:
 
 **Teams.** Quick play uses `sampleTeam`. "Roster my team" (`src/team-setup.tsx`) starts from `templates` and edits a `Team` (roles, `shiftNames`, `perDay`, `needs`) saved to localStorage. The week has 14 shifts: indices 0–6 are Mon–Sun first shift and 7–13 the second, so the day is `shift % 7`. Use `shiftLabel(shiftNames, shift)` for labels.
 
-**Other modules.** `sound.ts` synthesises every sound effect and the background music loop with Web Audio (no audio files). `play-qr.tsx` renders QR codes.
+**Other modules.** `sound.ts` synthesises every sound effect and the background music loop with Web Audio (no audio files). `play-qr.tsx` renders QR codes. `briefing.tsx` is the rules screen before a round.
 
 ## Conventions
 

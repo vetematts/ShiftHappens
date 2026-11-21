@@ -9,6 +9,7 @@ import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
 import PhoneController from "./phone-controller";
 import { cardColours, cardText, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
 import { PlayQr, playUrl, QrCode } from "./play-qr";
+import { Briefing, briefSeconds } from "./briefing";
 import { createSound, type Sound } from "./sound";
 
 const keyboards = [
@@ -260,6 +261,11 @@ function Game() {
   const [muted, setMuted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  // The rules screen before a round: when it moves on by itself (0 when not showing), seconds left, and which phones are ready
+  const briefUntil = useRef(0);
+  const [briefLeft, setBriefLeft] = useState(0);
+  const readySeats = useRef(critters.map(() => false));
+  const [ready, setReady] = useState(() => critters.map(() => false));
   // The 3-2-1-Go before a round: when it ends (0 when not counting), and what the big screen shows
   const countdownUntil = useRef(0);
   const [countIn, setCountIn] = useState("");
@@ -367,7 +373,7 @@ function Game() {
       setPhones(current => current && { ...current, seats: [...seats.current] });
     }
     // A phone joining mid-round (or during the countdown) brings its critter into the office straight away
-    if (seat !== -1 && seat >= round.current.players.length && (round.current.phase === "playing" || countdownUntil.current)) {
+    if (seat !== -1 && seat >= round.current.players.length && (round.current.phase === "playing" || countdownUntil.current || briefUntil.current)) {
       ensurePlayers(round.current, seat + 1);
       setView(snapshot(round.current));
     }
@@ -388,6 +394,13 @@ function Game() {
     setPhones(current => current && { ...current, seats: [...seats.current] });
   });
   const onPhoneMessage = useEffectEvent((message: Message, peer: string) => {
+    // While the rules are up, a phone's big button means "I'm ready"
+    if ((message.t === "ready" || message.t === "start") && briefUntil.current) {
+      const seat = seats.current.indexOf(peer);
+      if (seat !== -1) phoneReady(seat);
+      return;
+    }
+    if (message.t === "ready") return;
     if (message.t === "start") {
       if (round.current.phase !== "playing" && !setup && !countdownUntil.current) start();
       return;
@@ -437,7 +450,8 @@ function Game() {
 
   /** Esc, the × button or a click on the office around a panel goes back: out of setup, how to play or the phone lobby. */
   function closeOverlay() {
-    if (round.current.phase === "playing") return;
+    // Not while the rules or the 3-2-1 are up: the round is about to start, and the phones must stay connected
+    if (round.current.phase === "playing" || briefUntil.current || countdownUntil.current) return;
     if (setup) setSetup(false);
     else if (help) setHelp(false);
     else if (phones && round.current.phase === "ready") setPhones(null);
@@ -511,11 +525,23 @@ function Game() {
     let displayedRound: Round | undefined;
     let lastTick = Infinity;
     let shownCount = 0;
+    let shownBrief = 0;
 
     function loop(now: number) {
       const state = round.current;
       const seconds = Math.max(0, (now - previous) / 1000);
       previous = now;
+      // The rules screen moves on to the countdown by itself when its time is up
+      if (briefUntil.current) {
+        const left = Math.min(briefSeconds, Math.ceil((briefUntil.current - now) / 1000));
+        if (left <= 0) {
+          shownBrief = 0;
+          onBriefDone();
+        } else if (left !== shownBrief) {
+          shownBrief = left;
+          setBriefLeft(left);
+        }
+      }
       // Count 3-2-1 down before a round, then let everyone go at once. Nobody can act and the clock stays still until then.
       if (countdownUntil.current) {
         const left = Math.ceil((countdownUntil.current - now) / 1000);
@@ -571,6 +597,7 @@ function Game() {
         lastBroadcast = now;
         const latest = snapshot(state);
         const countdown = countdownUntil.current ? Math.max(1, Math.ceil((countdownUntil.current - now) / 1000)) : 0;
+        const briefing = briefUntil.current ? Math.min(briefSeconds, Math.max(1, Math.ceil((briefUntil.current - now) / 1000))) : 0;
         const awarded = state.phase === "won" || state.phase === "lost" ? awardWinners(latest.stats) : [];
         seats.current.forEach((peer, i) => {
           if (!peer) return;
@@ -580,7 +607,7 @@ function Game() {
             stamping: player?.stamping ?? false, stamp: player?.stamp ?? 0,
             charges: player?.charges ?? settings.dashCharges, regenIn: player?.regenIn ?? 0, boosted: player?.boosted ?? false,
             time: latest.time, filled: latest.filled, needed: latest.needed, news: latest.news,
-            countdown, stats: latest.stats[i],
+            countdown, briefing, ready: readySeats.current[i], stats: latest.stats[i],
             awards: awarded.filter(award => award.winners.includes(i)).map(award => award.title),
           }, peer);
         });
@@ -596,6 +623,11 @@ function Game() {
     }
 
     function keydown(event: KeyboardEvent) {
+      if (briefUntil.current && (event.code === "Enter" || event.code === "Space") && !event.repeat) {
+        event.preventDefault();
+        onBriefDone();
+        return;
+      }
       if (!gameKeys.includes(event.code) || round.current.phase !== "playing" || event.metaKey || event.altKey || event.ctrlKey) return;
       if (event.target instanceof HTMLElement && event.target.closest("a, button, input")) return;
       event.preventDefault();
@@ -643,8 +675,12 @@ function Game() {
     };
   }, []);
 
-  function start(mode: "quick" | "real" = lastMode.current) {
-    if (countdownUntil.current) return;
+  /**
+   * Sets up a round and starts it. Starting from the menu or the join screen shows the rules first (`brief`);
+   * Play again, or straight after reading How to play, goes straight to the 3-2-1.
+   */
+  function start(mode: "quick" | "real" = lastMode.current, brief = round.current.phase === "ready") {
+    if (countdownUntil.current || briefUntil.current) return;
     lastMode.current = mode;
     setSetup(false);
     sound.current?.unlock();
@@ -665,12 +701,41 @@ function Game() {
         people: team.people.filter(person => person.name.trim()).map(person => ({ ...person, name: person.name.trim() })),
       }, true, total)
       : newRound(sampleTeam, false, total);
-    // The round begins when the countdown runs out (see the loop)
     round.current = state;
-    countdownUntil.current = performance.now() + countdownSeconds * 1000;
-    setCountIn(String(countdownSeconds));
     setView(snapshot(state));
     host.current?.focus({ preventScroll: true });
+    if (brief) {
+      // The rules show first; the countdown starts when they're done (see the loop and briefDone)
+      readySeats.current = critters.map(() => false);
+      setReady(readySeats.current);
+      briefUntil.current = performance.now() + briefSeconds * 1000;
+      setBriefLeft(briefSeconds);
+      return;
+    }
+    beginCountdown();
+  }
+
+  /** The 3-2-1 before a round. The round begins when it runs out (see the loop). */
+  function beginCountdown() {
+    countdownUntil.current = performance.now() + countdownSeconds * 1000;
+    setCountIn(String(countdownSeconds));
+  }
+
+  /** Off the rules screen and into the countdown: when the host says go, every phone is ready, or time's up. */
+  function briefDone() {
+    if (!briefUntil.current) return;
+    briefUntil.current = 0;
+    setBriefLeft(0);
+    beginCountdown();
+  }
+  const onBriefDone = useEffectEvent(() => briefDone());
+
+  /** A phone pressed "I'm ready". Once every phone in the room has, the round starts. */
+  function phoneReady(seat: number) {
+    readySeats.current = readySeats.current.map((on, i) => on || i === seat);
+    setReady(readySeats.current);
+    const phonesIn = seats.current.map((peer, i) => (peer ? i : -1)).filter(i => i >= 0);
+    if (phonesIn.length && phonesIn.every(i => readySeats.current[i])) briefDone();
   }
 
   // "Go!" shows for a moment after the round starts, then clears
@@ -912,6 +977,10 @@ function Game() {
           </div>
         )}
 
+        {briefLeft > 0 && (
+          <Briefing left={briefLeft} seats={phones ? phones.seats : null} ready={ready} onGo={briefDone} />
+        )}
+
         {countIn && (
           <div className={`countdown${countIn === "Go!" ? " countdown--go" : ""}`} role="status" aria-live="assertive">
             <span key={countIn}>{countIn}</span>
@@ -919,7 +988,7 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && !playing && !countIn && (
+        {graphics === "ready" && !playing && !countIn && !briefLeft && (
           <div className={`screen${setup ? " screen--setup" : help ? " screen--help" : view.phase === "ready" ? (phones ? " screen--join" : " screen--menu") : " screen--end"}`}
             onClick={event => event.target === event.currentTarget && closeOverlay()}>
             {setup ? (
@@ -950,7 +1019,7 @@ function Game() {
                 </table>
                 <p className="how-note">Playing alone? Press <kbd>Q</kbd> to cycle through the critters.</p>
                 <div className="actions">
-                  <button type="button" className="btn btn-primary" onClick={() => { setHelp(false); start("quick"); }}>Got it, let’s play</button>
+                  <button type="button" className="btn btn-primary" onClick={() => { setHelp(false); start("quick", false); }}>Got it, let’s play</button>
                   <button type="button" className="btn btn-ghost" onClick={() => setHelp(false)}>Back</button>
                 </div>
               </div>
@@ -1038,7 +1107,7 @@ function Game() {
           </div>
         )}
 
-        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && !phones && (
+        {graphics === "ready" && view.phase === "ready" && !setup && !help && !countIn && !briefLeft && !phones && (
           <p className="ticker" key={tip}><b>Tip</b><span>{tips[tip]}</span></p>
         )}
       </section>

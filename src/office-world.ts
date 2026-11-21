@@ -3,8 +3,8 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
   atBoard, atDesk, atShredder, atTray, cardIn, columnAt, columnGap, columnX, days, furniture, hazardRadius, heldCard,
-  isDashing, isFallen, office, settings, staffInReach, traySpot, wantedBy,
-  type Card, type Fx, type Hazard, type Npc, type Round,
+  isDashing, isFallen, nextStop, office, settings, staffInReach, traySpot, wantedBy,
+  type Card, type Fx, type Hazard, type Npc, type Round, type Stop,
 } from "./round";
 import type { Sound } from "./sound";
 
@@ -1107,6 +1107,30 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     scene.add(mesh);
     return mesh;
   });
+
+  // Where each carried card goes next: a bigger arrow in the carrier's colour, bobbing over the desk, the counter,
+  // the right day on the board, the shredder or the employee an open shift is for
+  const beaconGeometry = new T.ConeGeometry(.5, .9, 24);
+  geometries.push(beaconGeometry);
+  // A slightly bigger white cone drawn first gives each arrow an outline, so it reads on any floor or furniture
+  const beaconEdge = new T.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, depthTest: false, side: T.BackSide });
+  ownMaterials.push(beaconEdge);
+  const beacons = playerColours.map(look => {
+    const surface = new T.MeshBasicMaterial({ color: look.ring, toneMapped: false, depthTest: false });
+    ownMaterials.push(surface);
+    const group = new T.Group();
+    const edge = new T.Mesh(beaconGeometry, beaconEdge);
+    edge.scale.setScalar(1.25);
+    edge.renderOrder = 5;
+    const mesh = new T.Mesh(beaconGeometry, surface);
+    mesh.renderOrder = 6;
+    group.add(edge, mesh);
+    group.rotation.x = Math.PI;
+    group.visible = false;
+    scene.add(group);
+    return group;
+  });
+  const beaconHeight: Record<Stop["to"], number> = { desk: 3, counter: 2.6, board: 1.9, shredder: 2.9, person: 3.7 };
 
   // Stamp progress: a horizontal bar over the critter's head, with a thin white outline so it reads on any floor
   const barWidth = 1.5;
@@ -2242,6 +2266,18 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       const player = round.players[i];
       const lift = still ? 0 : Math.abs(Math.sin(now * 5)) * .18;
       marker.position.set(player.position.x, (heldCard(round, i) ? 4.6 : 2.9) + lift, player.position.z);
+    });
+
+    // Players heading for the same spot get their arrows side by side
+    const stops = round.players.map((_, i) => (round.phase === "playing" ? nextStop(round, i) : undefined));
+    beacons.forEach((beacon, i) => {
+      const stop = stops[i];
+      beacon.visible = Boolean(stop);
+      if (!stop) return;
+      const same = stops.flatMap((other, j) => (other && other.x === stop.x && other.z === stop.z ? [j] : []));
+      const shift = (same.indexOf(i) - (same.length - 1) / 2) * .6;
+      const bob = still ? 0 : Math.abs(Math.sin(now * 4 + i)) * .28;
+      beacon.position.set(stop.x + shift, beaconHeight[stop.to] + bob, stop.z);
     });
 
     const follow = T.MathUtils.clamp((round.players[focus ?? 0] ?? round.players[0]).position.x, -maxPan, maxPan);

@@ -4,7 +4,7 @@
  * The players are helper critters living *inside* a rostering system. Employees send shift requests in;
  * the helpers move those request cards through the system: the Request Tray (inbox), the Manager's Desk
  * (approval stamp), across the counter, onto the Roster Board. Cancellations, open shifts that need cover
- * from the Staff Room, and a card-stealing Shift Snatcher keep un-filling the week.
+ * from the wandering employee they are for, and a card-stealing Shift Snatcher keep un-filling the week.
  *
  * Everything the UI and the 3D office need lives in `Round`. One-off moments (a pin, a "nope", a snatch)
  * are pushed onto `round.fx` so the renderer and sound can react without diffing state.
@@ -315,7 +315,7 @@ export function slotFloor(slot: number): Point {
 
 /**
  * request:   blue — an employee asked for a shift on `day`. Needs the manager's stamp.
- * open:      yellow — a shift on `day` with nobody on it. A staff NPC in the Staff Room must accept it.
+ * open:      yellow — a shift on `day` with nobody on it. The wandering employee in `worker` must be caught and handed it.
  * cancelled: red — a pinned shift whose worker cancelled. Pull it off the board and shred it.
  */
 export type CardKind = "request" | "open" | "cancelled";
@@ -337,7 +337,7 @@ export type Card = {
   day: number;
   /** Index into `round.staff` of the employee on the card. Open shifts have none until a staff member accepts. */
   worker?: number;
-  /** Stamped at the desk (requests) or accepted in the Staff Room (open shifts). */
+  /** Stamped at the desk (requests) or handed to their employee (open shifts). */
   approved: boolean;
   /** Seconds of stamping so far, 0…settings.stampTime. */
   stamp: number;

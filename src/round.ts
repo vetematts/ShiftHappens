@@ -49,7 +49,7 @@ const allShifts = (need: (shift: number, day: number, half: number) => Record<st
   shifts.map(({ dayIndex, half }, shift) => need(shift, dayIndex, half));
 const role = (id: string, label: string, colour: number): Role => ({ id, label, colour: roleColours[colour] });
 
-/** The café team used for quick play. There's enough slack that random choices still finish the week about 98% of the time. */
+/** The sample café, the starting point for "Roster my team". There's enough slack that random choices still finish the week about 98% of the time. */
 export const sampleTeam: Team = {
   kind: "cafe",
   roles: [role("barista", "Barista", 0), role("kitchen", "Kitchen", 1), role("register", "Register", 2)],
@@ -76,29 +76,32 @@ export const sampleTeam: Team = {
 
 const weekdays = workdays(0, 1, 2, 3, 4);
 
+/** The dental clinic used for quick play: open Monday to Friday, closed at the weekend. */
+export const dentalTeam: Team = {
+  kind: "dental",
+  roles: [role("dentist", "Dentist", 3), role("assistant", "Assistant", 2), role("reception", "Reception", 0)],
+  shiftNames: ["8–12", "1–5"],
+  perDay: 2,
+  people: [
+    { name: "Dr Lee", role: "dentist", days: workdays(0, 1, 2, 3), shifts: 8 },
+    { name: "Dr Patel", role: "dentist", days: workdays(1, 2, 3, 4), shifts: 8 },
+    { name: "Dr Wu", role: "dentist", days: workdays(0, 4), shifts: 4 },
+    { name: "Mia", role: "assistant", days: weekdays, shifts: 8 },
+    { name: "Noah", role: "assistant", days: weekdays, shifts: 8 },
+    { name: "Ivy", role: "assistant", days: workdays(0, 2, 4), shifts: 6 },
+    { name: "Zoe", role: "reception", days: weekdays, shifts: 8 },
+    { name: "Tom", role: "reception", days: weekdays, shifts: 8 },
+  ],
+  needs: allShifts((_, day): Record<string, number> => (day < 5 ? { dentist: 1, assistant: 1, reception: 1 } : {})),
+};
+
+/** The team quick play uses. */
+export const quickTeam = dentalTeam;
+
 /** Starting points for "Roster my team". Each is a full week that random choices still finish over 90% of the time, ready to edit. */
 export const templates: { id: string; label: string; blurb: string; icon: string; team: Team }[] = [
   { id: "cafe", label: "Café", blurb: "Baristas, kitchen and register, open every day", icon: "☕", team: sampleTeam },
-  {
-    id: "dental", label: "Dental clinic", blurb: "Dentists, assistants and reception, weekdays", icon: "🦷",
-    team: {
-      kind: "dental",
-      roles: [role("dentist", "Dentist", 3), role("assistant", "Assistant", 2), role("reception", "Reception", 0)],
-      shiftNames: ["8–12", "1–5"],
-      perDay: 2,
-      people: [
-        { name: "Dr Lee", role: "dentist", days: workdays(0, 1, 2, 3), shifts: 8 },
-        { name: "Dr Patel", role: "dentist", days: workdays(1, 2, 3, 4), shifts: 8 },
-        { name: "Dr Wu", role: "dentist", days: workdays(0, 4), shifts: 4 },
-        { name: "Mia", role: "assistant", days: weekdays, shifts: 8 },
-        { name: "Noah", role: "assistant", days: weekdays, shifts: 8 },
-        { name: "Ivy", role: "assistant", days: workdays(0, 2, 4), shifts: 6 },
-        { name: "Zoe", role: "reception", days: weekdays, shifts: 8 },
-        { name: "Tom", role: "reception", days: weekdays, shifts: 8 },
-      ],
-      needs: allShifts((_, day): Record<string, number> => (day < 5 ? { dentist: 1, assistant: 1, reception: 1 } : {})),
-    },
-  },
+  { id: "dental", label: "Dental clinic", blurb: "Dentists, assistants and reception, weekdays", icon: "🦷", team: dentalTeam },
   {
     id: "salon", label: "Hair salon", blurb: "Stylists and apprentices, busy Saturdays", icon: "💇",
     team: {
@@ -200,7 +203,7 @@ export const settings = {
   /** A card wobbles on the board for this long before it turns red. */
   cancelWarning: 3,
   /** Seconds between Shift Snatcher visits (none while calm). */
-  snatcherEvery: { calm: Infinity, busy: 16, chaos: 10 } as Record<Stage, number>,
+  snatcherEvery: { calm: Infinity, busy: 20, chaos: 13 } as Record<Stage, number>,
   snatcherSpeed: { calm: 2.6, busy: 2.6, chaos: 3.5 } as Record<Stage, number>,
   /** How long the Snatcher is dazed after a dash knocks it. */
   snatcherDaze: .9,
@@ -655,7 +658,7 @@ function startSpot(index: number, count: number): Point {
 }
 
 /** A fresh round. `players` is how many helper critters are in the office (2–4). */
-export function newRound(team: Team = sampleTeam, custom = false, players = 2): Round {
+export function newRound(team: Team = quickTeam, custom = false, players = 2): Round {
   const people = team.people.length ? team.people : sampleTeam.people;
   const staff = people.map((person, id) => ({ ...person, days: [...person.days], id }));
   const wanderers = shuffle(staff.map(person => person.id)).slice(0, settings.staffCount);

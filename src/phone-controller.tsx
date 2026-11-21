@@ -172,7 +172,7 @@ export default function PhoneController({ code, local }: { code: string; local: 
   const inRoom = Math.max(1, joined.filter(Boolean).length);
 
   return (
-    <main className="gp" onContextMenu={event => event.preventDefault()} style={{ "--gp": critter?.colour ?? "#efe7ff" } as CSSProperties}>
+    <main className="gp" data-stage={status?.phase === "playing" ? status.stage : undefined} onContextMenu={event => event.preventDefault()} style={{ "--gp": critter?.colour ?? "#efe7ff" } as CSSProperties}>
       <header className="gp-head">
         <strong>{critter ? `${critter.emoji} You’re the ${critter.name}` : "Shift Happens!"}</strong>
         <span>Room {code}</span>

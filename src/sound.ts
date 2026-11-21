@@ -183,6 +183,11 @@ export function createSound() {
         scheduler = undefined;
       }
     },
+    /** How far the music has got, in beats (one every two steps, four to a bar), or null while it isn't playing. */
+    musicBeat() {
+      if (!context || !tempo || !nextStep) return null;
+      return (step - (nextStep - context.currentTime) / (0.25 / tempo)) / 2;
+    },
     get muted() {
       return muted;
     },

@@ -240,7 +240,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   scene.environment = environment;
   scene.environmentIntensity = .38;
 
-  const hemisphere = new T.HemisphereLight(0xfff3df, 0xb39fdc, 1.15);
+  let ambient = 1.15;
+  const hemisphere = new T.HemisphereLight(0xfff3df, 0xb39fdc, ambient);
   scene.add(hemisphere);
   const sun = new T.DirectionalLight(0xfff0d6, 2.8);
   sun.position.set(-6, 15, 9);
@@ -258,7 +259,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     renderer.shadowMap.enabled = false;
     sun.castShadow = false;
     scene.environment = null;
-    hemisphere.intensity = 1.6;
+    ambient = 1.6;
+    hemisphere.intensity = ambient;
     size();
   }
   const frameTimes: number[] = [];
@@ -353,19 +355,52 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   const tileCols = 2 * Math.floor(roomX) + 1;
   const tileRows = 2 * Math.floor(roomZ) + 1;
   const tileMid = (tileRows - 1) / 2;
-  const tiles = new T.InstancedMesh(tileGeometry, tileMaterial, tileCols * tileRows);
+  const tileCount = tileCols * tileRows;
+  const tiles = new T.InstancedMesh(tileGeometry, tileMaterial, tileCount);
   tiles.receiveShadow = true;
   const matrix = new T.Matrix4();
   const tint = new T.Color();
+  // Each tile's usual colour, kept so the stage lighting can blend away from it and back
+  const tileBase: T.Color[] = [];
   for (let row = 0, i = 0; row < tileRows; row++) {
     for (let col = 0; col < tileCols; col++, i++) {
       const back = row < tileMid;
       const set = back ? colours.tileBack : colours.tileFront;
       tiles.setMatrixAt(i, matrix.makeTranslation(col - (tileCols - 1) / 2, -.02, row - tileMid));
-      tiles.setColorAt(i, tint.setHex(set[(row + col) % 2]));
+      tileBase.push(new T.Color(set[(row + col) % 2]));
+      tiles.setColorAt(i, tileBase[i]);
     }
   }
   scene.add(tiles);
+  // A glow layer just above the tiles for the disco floor. It adds light, so black instances are invisible.
+  const tileGlowGeometry = new T.PlaneGeometry(.92, .92).rotateX(-Math.PI / 2);
+  geometries.push(tileGlowGeometry);
+  const tileGlowMaterial = new T.MeshBasicMaterial({
+    map: paint(128, 128, pen => {
+      const fill = pen.createRadialGradient(64, 64, 8, 64, 64, 72);
+      fill.addColorStop(0, "rgba(255,255,255,.75)");
+      fill.addColorStop(1, "rgba(255,255,255,.25)");
+      pen.fillStyle = fill;
+      pen.beginPath();
+      pen.roundRect(6, 6, 116, 116, 18);
+      pen.fill();
+      pen.lineWidth = 8;
+      pen.strokeStyle = "#ffffff";
+      pen.stroke();
+    }),
+    transparent: true, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false,
+  });
+  ownMaterials.push(tileGlowMaterial);
+  const tileGlow = new T.InstancedMesh(tileGlowGeometry, tileGlowMaterial, tileCount);
+  for (let i = 0; i < tileCount; i++) {
+    tiles.getMatrixAt(i, matrix);
+    tileGlow.setMatrixAt(i, matrix.multiply(new T.Matrix4().makeTranslation(0, .062, 0)));
+    tileGlow.setColorAt(i, tint.setRGB(0, 0, 0));
+  }
+  // Drawn before other see-through things (shadows, puddles) so they sit on top of the glow
+  tileGlow.renderOrder = -1;
+  tileGlow.visible = false;
+  scene.add(tileGlow);
   const rugLeft = office.tray.x - furniture.inbox.w / 2 - .35;
   const rugRight = office.desk.x + furniture.desk.w / 2 + .35;
   const rugX = (rugLeft + rugRight) / 2;
@@ -653,6 +688,173 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   rbox(coffee, 0x8fe3c1, -.26, 1.16, -.2, .02, .12, .2, .01).castShadow = false;
   ball(coffee, colours.stampRed, -.27, 1.26, -.05, .03, .03, .02, false);
   for (const [z, colour] of [[.25, colours.white], [.45, 0xff9fb4]] as const) cylinder(coffee, colour, 0, 1.0, z, .08, .16);
+
+  // Office dressing: bookcases, plants and clutter. All of it sits against or on top of the walls, on the counter or on
+  // the desk, outside the floor players walk on, so the rules' collision layout doesn't change.
+  let seed = 20261121;
+  const random = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  const pick = <V,>(list: readonly V[]) => list[Math.floor(random() * list.length)];
+  const bookColours = [0xff7a8a, 0x5aa6d0, 0xffd35c, 0x8fe3c1, 0xcdb8ff, 0xffa36b, 0x6cc58a, 0xfff4e2, 0xe0405f, 0x3f86b0, 0xff9fb4];
+  // Books are gathered here and drawn as one instanced mesh at the end
+  const books: { at: T.Matrix4; colour: number }[] = [];
+  const placer = new T.Object3D();
+  function book(frame: T.Matrix4 | null, x: number, y: number, z: number, w: number, h: number, d: number, turn = 0) {
+    placer.position.set(x, y + h / 2, z);
+    placer.rotation.set(0, turn, 0);
+    placer.scale.set(w, h, d);
+    placer.updateMatrix();
+    books.push({ at: frame ? frame.clone().multiply(placer.matrix) : placer.matrix.clone(), colour: pick(bookColours) });
+  }
+  /** A row of standing books along local x, centred on (x, z), with the odd gap holding a little lying-down pile. */
+  function shelfRow(frame: T.Matrix4 | null, x: number, y: number, z: number, length: number, tallest: number, deep: number) {
+    for (let at = 0; ;) {
+      const thick = .06 + random() * .06;
+      if (at + thick > length) break;
+      if (random() < .1 && length - at > .4) {
+        const gap = .3 + random() * .06;
+        for (let i = 0; i < 1 + Math.floor(random() * 3); i++) {
+          book(frame, x - length / 2 + at + gap / 2, y + i * .055, z, gap - .04 - random() * .04, .05, deep * .9, (random() - .5) * .2);
+        }
+        at += gap;
+        continue;
+      }
+      book(frame, x - length / 2 + at + thick / 2, y, z, thick, tallest * (.7 + random() * .3), deep * (.85 + random() * .15));
+      at += thick + .006;
+    }
+  }
+  /** A pile of books lying flat. Returns the height of its top. */
+  function bookPile(frame: T.Matrix4 | null, x: number, y: number, z: number, count: number) {
+    let top = y;
+    for (let i = 0; i < count; i++) {
+      const thick = .05 + random() * .03;
+      book(frame, x + (random() - .5) * .04, top, z + (random() - .5) * .04, .3 + random() * .1, thick, .22 + random() * .06, (random() - .5) * .5);
+      top += thick;
+    }
+    return top;
+  }
+  /** A wooden bookcase standing at (x, y, z), its open side facing `facing` (0 faces the camera). */
+  function bookcase(x: number, y: number, z: number, width: number, height: number, depth: number, shelves: number, facing: number) {
+    const group = new T.Group();
+    group.position.set(x, y, z);
+    group.rotation.y = facing;
+    scene.add(group);
+    group.updateMatrixWorld();
+    rbox(group, 0xb8784a, 0, height / 2, -depth / 2 + .03, width - .06, height - .04, .05, .02);
+    for (const side of [-1, 1]) rbox(group, colours.desk, side * (width / 2 - .04), height / 2, 0, .08, height, depth, .03);
+    rbox(group, colours.deskTop, 0, height - .04, .01, width + .06, .08, depth + .04, .03);
+    rbox(group, colours.desk, 0, .05, 0, width - .04, .1, depth, .03);
+    const gap = (height - .18) / shelves;
+    for (let i = 0; i < shelves; i++) {
+      const floor = .1 + i * gap;
+      if (i > 0) rbox(group, colours.desk, 0, floor - .02, 0, width - .1, .04, depth - .03, .01);
+      shelfRow(group.matrixWorld, 0, floor, .02, width - .2, gap - .1, depth * .75);
+    }
+    return group;
+  }
+
+  type PlantKind = "bush" | "snake" | "cactus" | "trailing";
+  /** A small potted plant for shelves, walls and counters. Its pot is about .3 tall at size 1. */
+  function pottedPlant(parent: T.Object3D, kind: PlantKind, x: number, y: number, z: number, size = 1, pot: number = colours.pot) {
+    const plant = new T.Group();
+    plant.position.set(x, y, z);
+    plant.rotation.y = random() * Math.PI * 2;
+    plant.scale.setScalar(size);
+    parent.add(plant);
+    cylinder(plant, pot, 0, .14, 0, .15, .28);
+    cylinder(plant, 0x7b5236, 0, .28, 0, .13, .02);
+    if (kind === "bush") {
+      ball(plant, colours.leaf, 0, .44, 0, .21, .18, .21);
+      ball(plant, colours.leafLight, .09, .56, .05, .13);
+      ball(plant, colours.leaf, -.08, .58, -.05, .12);
+    } else if (kind === "snake") {
+      for (let i = 0; i < 5; i++) {
+        const tall = .42 + (i % 3) * .1;
+        const blade = rbox(plant, i % 2 ? colours.leaf : 0x4f9e6a, Math.cos(i * 1.3) * .06, .28 + tall / 2, Math.sin(i * 1.3) * .06, .08, tall, .03, .015);
+        blade.rotation.set(Math.sin(i * 1.3) * .2, i * 1.1, Math.cos(i * 1.3) * -.2);
+      }
+    } else if (kind === "cactus") {
+      parts.capsule(plant, 0x5fb86e, 0, .5, 0, .1, .12, .1);
+      parts.capsule(plant, 0x5fb86e, .12, .52, 0, .05, .05, .05);
+      parts.capsule(plant, 0x5fb86e, -.11, .6, 0, .045, .04, .045);
+      ball(plant, 0xff8fb0, 0, .74, 0, .05);
+    } else {
+      ball(plant, colours.leaf, 0, .36, 0, .2, .12, .2);
+      for (let i = 0; i < 4; i++) {
+        const angle = i * Math.PI / 2 + .4;
+        parts.capsule(plant, colours.leafLight, Math.cos(angle) * .17, .16 - (i % 2) * .06, Math.sin(angle) * .17, .04, .1, .04);
+      }
+    }
+    return plant;
+  }
+  /** A long planter box sitting on top of a side wall, with leaves trailing down the room side. */
+  function planter(x: number, z: number, length: number) {
+    const box = new T.Group();
+    box.position.set(x, 1.03, z);
+    scene.add(box);
+    rbox(box, colours.pot, 0, .14, 0, .36, .28, length, .06);
+    rbox(box, 0x7b5236, 0, .285, 0, .3, .02, length - .06, .01).castShadow = false;
+    const inward = -Math.sign(x);
+    for (let along = -length / 2 + .24; along <= length / 2 - .2; along += .36) {
+      const lift = random() * .08;
+      ball(box, random() < .5 ? colours.leaf : colours.leafLight, (random() - .5) * .08, .38 + lift, along, .2, .16 + lift, .2);
+      if (random() < .4) ball(box, pick([0xff8fb0, 0xffd35c, 0xfff4e2]), inward * .06, .52 + 2 * lift, along + .06, .05, .05, .05, false);
+      if (random() < .5) parts.capsule(box, colours.leaf, inward * .21, .02, along + .1, .04, .1, .04);
+    }
+  }
+
+  // Low bookcases in the back corners, under the poster and the clock
+  // Centred between the board's frame and the corner plant's pot
+  const cornerCaseX = (boardWidth / 2 + .18 + furniture.plants[1].x - .5) / 2;
+  for (const side of [-1, 1]) {
+    bookcase(side * cornerCaseX, 0, backWallZ + .33, 1.45, 1.1, .3, 2, 0);
+    bookPile(null, side * (cornerCaseX - .5), 1.1, backWallZ + .33, 2);
+  }
+  // A taller bookcase standing on the west wall, open towards the room
+  bookcase(-sideWallX, 1.03, -5.3, 2.0, 1.45, .36, 3, Math.PI / 2);
+  // Plants and piles along the tops of the side walls
+  planter(-sideWallX, 2.6, 2.4);
+  planter(sideWallX, 2.6, 2.4);
+  pottedPlant(scene, "snake", -sideWallX, 1.03, -1.6, 1.5);
+  pottedPlant(scene, "bush", sideWallX, 1.03, office.exit.z + 1.55, 1.5, 0x8fe3c1);
+  pottedPlant(scene, "trailing", sideWallX, 1.03, .4, 1.5, 0xcdb8ff);
+  pottedPlant(scene, "cactus", -sideWallX, 1.03, 4.9, 1.4, 0x8fe3c1);
+  bookPile(null, sideWallX, 1.03, 4.9, 3);
+  bookPile(null, -sideWallX, 1.03, -3.6, 2);
+  // Clutter on the counter top, clear of the pass pads
+  const counterTop = 1.0;
+  pottedPlant(scene, "snake", counterLeft + .55, counterTop, -.1, .85, 0xffd35c);
+  bookPile(null, counterLeft + 1.75, counterTop, .12, 3);
+  const penCup = new T.Group();
+  penCup.position.set(counterLeft + 2.75, counterTop, -.15);
+  scene.add(penCup);
+  cylinder(penCup, 0x5aa6d0, 0, .1, 0, .08, .2);
+  [0xffd35c, colours.stampRed, 0x8fe3c1].forEach((colour, i) => {
+    const pen = cylinder(penCup, colour, (i - 1) * .035, .26, (i % 2) * .03, .014, .22);
+    pen.rotation.z = (i - 1) * .18;
+  });
+  const letterTray = new T.Group();
+  letterTray.position.set(office.pass[0].x - 1.25, counterTop, .05);
+  letterTray.rotation.y = .15;
+  scene.add(letterTray);
+  rbox(letterTray, 0xa9c8ff, 0, .03, 0, .48, .06, .36, .02);
+  for (let i = 0; i < 3; i++) rbox(letterTray, colours.white, 0, .07 + i * .012, 0, .4, .01, .3, .004).rotation.y = (i - 1) * .08;
+  const pileTop = bookPile(null, office.counterRight - .45, counterTop, -.05, 2);
+  pottedPlant(scene, "bush", office.counterRight - .45, pileTop, -.05, .65, 0xff9fb4);
+  // A tiny cactus keeping the manager company
+  pottedPlant(desk, "cactus", -.45, .91, -.38, .7, 0xffd35c);
+
+  const bookGeometry = new RoundedBoxGeometry(1, 1, 1, 1, .1);
+  geometries.push(bookGeometry);
+  const bookShelfMaterial = new T.MeshStandardMaterial({ roughness: .7 });
+  ownMaterials.push(bookShelfMaterial);
+  const bookMesh = new T.InstancedMesh(bookGeometry, bookShelfMaterial, books.length);
+  books.forEach(({ at, colour }, i) => {
+    bookMesh.setMatrixAt(i, at);
+    bookMesh.setColorAt(i, tint.setHex(colour));
+  });
+  bookMesh.castShadow = true;
+  bookMesh.receiveShadow = true;
+  scene.add(bookMesh);
   // Shredder: a box with a slot on top, a bin at the front and paper strips peeking out
   const shredderGroup = new T.Group();
   shredderGroup.position.set(furniture.shredder.x, 0, furniture.shredder.z);
@@ -1178,6 +1380,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   const confetti = pool(confettiGeometry, 160, false);
   const puffs = pool(puffGeometry, 80, true);
   const confettiColours = [0xff6f8e, 0xffd35c, 0x5fe39a, 0x6eb7ff, 0xb48cff, 0xff9e5c];
+  // Chaos is mostly reds, with a hot orange for a bit of contrast
+  const discoColours = [0xff2b3d, 0xd6123c, 0xff5a5f, 0xff3d6e, 0xb80f2a, 0xff7a3a];
 
   function emit(target: typeof confetti, at: T.Vector3Like, count: number, options: { colours: number[]; speed: number; up: number; gravity: number; life: number; size: number }) {
     for (let n = 0; n < count; n++) {
@@ -1620,9 +1824,15 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(puffs, { x, y: .1, z }, 8, { colours: [0x8fd6ff, 0xffffff], speed: 1.4, up: .5, gravity: 0, life: .5, size: .9 });
         break;
       case "busy":
+        for (let i = -2; i <= 2; i++) {
+          emit(confetti, { x: i * 4.6, y: 2.8, z: backWallZ + .7 }, 10, { colours: [0xffd35c, 0xffb347, 0xfff27a], speed: 1.6, up: 2, gravity: 5, life: 1.4, size: .9 });
+        }
         break;
       case "chaos":
         shake = Math.max(shake, .12);
+        for (let i = -3; i <= 3; i++) {
+          emit(confetti, { x: i * 3.3, y: 2.9, z: backWallZ + .7 }, 16, { colours: discoColours, speed: 2.4, up: 3, gravity: 5, life: 1.8, size: 1.1 });
+        }
         break;
       case "win":
         for (let i = 0; i < 7; i++) {
@@ -2209,6 +2419,154 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     renderer.render(scene, camera);
   }
 
+  // Stage moods. Busy runs marquee lights round the edge of the floor and lights up the tiles players step on.
+  // Chaos (and a won round) turns the whole floor into a disco that pulses in time with the music, shifts the
+  // lights to a party glow and sets the string lights chasing through reds.
+  const tileCentreCol = (tileCols - 1) / 2;
+  // How far round the floor's edge each border tile is, or -1 for inner tiles
+  const marquee = tileBase.map((_, i) => {
+    const col = i % tileCols;
+    const row = Math.floor(i / tileCols);
+    const right = tileCols - 1;
+    const bottom = tileRows - 1;
+    if (row === 0) return col;
+    if (col === right) return right + row;
+    if (row === bottom) return right + bottom + right - col;
+    if (col === 0) return 2 * right + bottom + bottom - row;
+    return -1;
+  });
+  const steps = new Float32Array(tileCount);
+  const stepTints = tileBase.map(() => new T.Color());
+  const discoOff = new T.Color(0x4a2230);
+  const marqueeOn = new T.Color(0xffb347);
+  const marqueeDim = new T.Color(0xffe2a8);
+  const calmSky = new T.Color(0xfff3df);
+  const busySky = new T.Color(0xffe9c4);
+  const chaosSky = new T.Color(0xffd8d8);
+  const calmSun = new T.Color(0xfff0d6);
+  const chaosSun = new T.Color(0xffcfc8);
+  const glowTint = new T.Color();
+  const scratch = new T.Color();
+  let busyMood = 0;
+  let discoMood = 0;
+  let floorLit = false;
+  let ownBeat = 0;
+  const hash = (a: number, b: number, c: number) => {
+    const value = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453;
+    return value - Math.floor(value);
+  };
+  const wrap = (value: number, size: number) => (value % size + size) % size;
+  const discoCount = discoColours.length;
+  // Each returns which disco colour a tile shows on this beat, or -1 when it's dark. Each bar plays the next pattern.
+  const discoPatterns: ((col: number, row: number, beat: number) => number)[] = [
+    // checkerboard flipping every beat
+    (col, row, beat) => (col + row + beat) % 2 ? -1 : wrap(Math.floor(beat / 2), discoCount),
+    // squares rippling out from the middle
+    (col, row, beat) => {
+      const ring = Math.max(Math.abs(col - tileCentreCol), Math.abs(row - tileMid)) - beat;
+      return wrap(ring, 3) === 0 ? wrap(Math.floor(ring / 3), discoCount) : -1;
+    },
+    // diagonal stripes marching across
+    (col, row, beat) => wrap(col - row - beat, 3) === 0 ? wrap(col + row, discoCount) : -1,
+    // random sparkle
+    (col, row, beat) => hash(col, row, beat) < .42 ? Math.floor(hash(row, col, beat) * discoCount) : -1,
+    // a moving grid
+    (col, row, beat) => wrap(col + beat, 4) === 0 || wrap(row - beat, 4) === 0 ? wrap(beat, discoCount) : -1,
+  ];
+
+  function lightStage(round: Round, now: number, dt: number, still: boolean) {
+    const playing = round.phase === "playing";
+    const party = (playing && round.stage === "chaos") || round.phase === "won";
+    const ease = 1 - Math.exp(-dt * 3);
+    discoMood += ((party ? 1 : 0) - discoMood) * ease;
+    busyMood += ((playing && round.stage === "busy" ? 1 : 0) - busyMood) * ease;
+    if (discoMood < .003) discoMood = 0;
+    if (busyMood < .003) busyMood = 0;
+
+    // Beats follow the music while it plays, otherwise a clock at the same speed. Reduced motion slows them right down.
+    const tempo = round.phase === "won" ? 1 : settings.duration - round.elapsed <= 10 ? 1.35 : 1.16;
+    ownBeat += dt * tempo * 2;
+    // The music reports a slightly negative beat for a moment as it starts, so clamp at zero
+    const beatNow = Math.max(0, still ? now / 1.6 : sound?.musicBeat() ?? ownBeat);
+    const beat = Math.floor(beatNow);
+    const pulse = still ? .6 : Math.exp(-(beatNow - beat) * 3.5);
+    const pattern = discoPatterns[wrap(Math.floor(beat / 4), discoPatterns.length)];
+    const chase = Math.floor(now * 7);
+
+    // Footsteps light up in the player's colour while it's busy or chaotic
+    const stepping = Math.max(busyMood * .7, discoMood);
+    let stepsLit = false;
+    for (let i = 0; i < tileCount; i++) {
+      steps[i] = Math.max(0, steps[i] - dt * 1.6);
+      if (steps[i] > 0) stepsLit = true;
+    }
+    if (stepping > 0 && playing) {
+      round.players.forEach((player, index) => {
+        const col = Math.round(player.position.x + tileCentreCol);
+        const row = Math.round(player.position.z + tileMid);
+        if (col < 0 || row < 0 || col >= tileCols || row >= tileRows) return;
+        const tile = row * tileCols + col;
+        steps[tile] = 1;
+        stepTints[tile].setHex(playerColours[index % playerColours.length].ring);
+        stepsLit = true;
+      });
+    }
+
+    const active = busyMood > 0 || discoMood > 0 || stepsLit;
+    tileGlow.visible = active;
+    // Repaint while anything is lit, plus once more after it all fades to put the plain floor back
+    if (active || floorLit) {
+      for (let i = 0; i < tileCount; i++) {
+        tint.copy(tileBase[i]);
+        glowTint.setRGB(0, 0, 0);
+        if (busyMood > 0 && marquee[i] >= 0) {
+          const lit = still ? marquee[i] % 2 === 0 : wrap(marquee[i] - chase, 4) === 0;
+          tint.lerp(lit ? marqueeOn : marqueeDim, busyMood * (lit ? .9 : .55));
+          if (lit) glowTint.copy(marqueeOn).multiplyScalar(.35 * busyMood);
+        }
+        if (discoMood > 0) {
+          const shade = pattern(i % tileCols, Math.floor(i / tileCols), beat);
+          if (shade < 0) tint.lerp(discoOff, discoMood * .8);
+          else {
+            scratch.setHex(discoColours[shade]);
+            tint.lerp(scratch, discoMood);
+            glowTint.add(scratch.multiplyScalar(discoMood * (.15 + .4 * pulse)));
+          }
+        }
+        if (steps[i] > 0) {
+          const level = steps[i] * Math.max(stepping, .3);
+          tint.lerp(stepTints[i], level * .85);
+          glowTint.add(scratch.copy(stepTints[i]).multiplyScalar(level * .5));
+        }
+        tiles.setColorAt(i, tint);
+        tileGlow.setColorAt(i, glowTint);
+      }
+      if (tiles.instanceColor) tiles.instanceColor.needsUpdate = true;
+      if (tileGlow.instanceColor) tileGlow.instanceColor.needsUpdate = true;
+      floorLit = active;
+    }
+
+    // Lights: warmer when busy, a dimmer red party glow in chaos so the floor stands out
+    hemisphere.color.copy(calmSky).lerp(busySky, busyMood).lerp(chaosSky, discoMood);
+    hemisphere.intensity = ambient * (1 - .2 * discoMood);
+    sun.color.copy(calmSun).lerp(chaosSun, discoMood);
+    sun.intensity = 2.8 * (1 - .3 * discoMood);
+
+    // String lights twinkle faster once it's busy, and chase through reds in chaos
+    const twinkle = round.stage !== "calm" && playing ? 6 : 1.6;
+    for (let i = 0; i < bulbCount; i++) {
+      const level = .75 + Math.sin(now * twinkle + i * 1.7) * .25;
+      tint.setHex(bulbColours[i % bulbColours.length]).multiplyScalar(level);
+      if (discoMood > 0) {
+        // Hues from crimson round to orange, matching the floor
+        scratch.setHSL(wrap(.96 + .1 * wrap(i / 6 - (still ? 0 : beatNow / 4), 1), 1), 1, .55 + .15 * pulse);
+        tint.lerp(scratch, discoMood);
+      }
+      bulbs.setColorAt(i, tint);
+    }
+    if (bulbs.instanceColor) bulbs.instanceColor.needsUpdate = true;
+  }
+
   function draw(round: Round, focus: number | null = null) {
     const time = performance.now();
     const now = (time - clockStart) / 1000;
@@ -2237,13 +2595,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     hand.rotation.z = -(round.elapsed / settings.duration) * Math.PI * 2;
     (clockRim.material as T.MeshStandardMaterial).color.setHex(round.phase === "playing" && left <= 10 && Math.sin(now * 10) > 0 ? 0xff3355 : 0xff7a8a);
 
-    const twinkle = round.stage !== "calm" && round.phase === "playing" ? 6 : 1.6;
-    for (let i = 0; i < bulbCount; i++) {
-      const level = .75 + Math.sin(now * twinkle + i * 1.7) * .25;
-      tint.setHex(bulbColours[i % bulbColours.length]).multiplyScalar(level);
-      bulbs.setColorAt(i, tint);
-    }
-    if (bulbs.instanceColor) bulbs.instanceColor.needsUpdate = true;
+    lightStage(round, now, dt, still);
 
     popups.forEach(item => {
       if (!item.sprite.visible) return;

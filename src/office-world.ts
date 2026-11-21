@@ -1438,7 +1438,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(confetti, at, 12, { colours: [0x5fe39a, 0xffffff, 0xffd35c], speed: 1.8, up: 3, gravity: 8, life: .9, size: .8 });
         popup("stamp", office.desk.x + .3, 3.0, office.desk.z, .95);
         if (mine) mine.popped = now;
-        shake = Math.max(shake, .08);
         break;
       }
       case "pin": {
@@ -1448,7 +1447,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(confetti, { x: spot.x, y: spot.y, z: boardZ + .3 }, 26, { colours: confettiColours, speed: 2.4, up: 3.2, gravity: 7, life: 1.2, size: 1 });
         popup("pin", spot.x, 1.0, office.boardZ + .9, .9);
         if (mine) mine.popped = now;
-        shake = Math.max(shake, .12);
         break;
       }
       case "nope":
@@ -1462,7 +1460,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         emit(puffs, { x: spot.x, y: spot.y, z: boardZ + .3 }, 10, { colours: [0xff6b6b, 0xfff6e6], speed: 1.3, up: .8, gravity: 0, life: .7, size: .9 });
         popup("cancel", spot.x, 1.0, office.boardZ + .9, 1);
         ringUntil = now + 1.6;
-        shake = Math.max(shake, .1);
         break;
       }
       case "shred":
@@ -1489,12 +1486,12 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         break;
       }
       case "snatch":
-        shake = Math.max(shake, .26);
+        shake = Math.max(shake, .18);
         popup("snatch", x, 1.0, Math.max(z, office.boardZ + .9), 1.15);
         emit(puffs, { x, y: 1, z }, 8, { colours: [0xfffdf8, 0xff8fb0], speed: 1.4, up: .8, gravity: 0, life: .6, size: .9 });
         break;
       case "knock":
-        shake = Math.max(shake, .2);
+        shake = Math.max(shake, .12);
         squash(event.player, 6);
         emit(confetti, { x, y: 1.6, z }, 12, { colours: starColours, speed: 1.9, up: 3.2, gravity: 6, life: 1, size: .9 });
         break;
@@ -1535,14 +1532,12 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       case "leak":
         popup("leak", furniture.cooler.x + .7, 2.5, furniture.cooler.z, .9);
         emit(puffs, { x: furniture.cooler.x + .3, y: .5, z: furniture.cooler.z - .2 }, 10, { colours: [0x8fd6ff, 0xffffff], speed: 1.2, up: .6, gravity: 0, life: .7, size: .9 });
-        shake = Math.max(shake, .06);
         break;
       case "peel":
         popup("peel", x, 2.1, z, .75);
         emit(puffs, { x, y: .3, z }, 6, { colours: [0xffe066, 0xfff6e6], speed: .8, up: .5, gravity: 0, life: .5, size: .8 });
         break;
       case "slip":
-        shake = Math.max(shake, .16);
         squash(event.player, -6);
         popup("slip", x, 2.6, z, .9);
         emit(confetti, { x, y: 1.3, z }, 10, { colours: starColours, speed: 1.6, up: 2.6, gravity: 6, life: .9, size: .8 });
@@ -1551,7 +1546,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       case "busy":
         break;
       case "chaos":
-        shake = Math.max(shake, .15);
+        shake = Math.max(shake, .12);
         break;
       case "win":
         for (let i = 0; i < 7; i++) {
@@ -2230,9 +2225,11 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     pan += (follow - pan) * (1 - Math.exp(-dt * 4));
     camera.position.copy(basePosition);
     camera.position.x += pan;
+    // Only big moments (the Snatcher, knocking it, Chaos) shake the room, and as a short smooth wobble rather than
+    // random jitter, so busy rounds with lots of stamping and slipping don't make the whole picture jump about
     if (shake > 0 && !still) {
-      camera.position.x += (Math.random() - .5) * shake;
-      camera.position.y += (Math.random() - .5) * shake;
+      camera.position.x += Math.sin(now * 38) * shake * .5;
+      camera.position.y += Math.cos(now * 31) * shake * .35;
     }
     shake = Math.max(0, shake - dt * .9);
     render();

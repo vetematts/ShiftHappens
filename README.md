@@ -4,7 +4,9 @@ Overcooked, but for rostering. Two to four helper critters (a duck, a bunny, a c
 
 **[Play it now](https://vetematts.github.io/ShiftHappens/)** on a laptop or a phone.
 
-Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edward Li](https://github.com/eli0118999), [Flynn Martschinke](https://github.com/flynnmartschinke) and [Harsha](https://github.com/hvarma029).
+![Mid-round in the office: the duck carries a shift card, the bunny waits at the counter, and the bin chicken runs off with a card from the roster board](docs/gameplay.jpg)
+
+Made for the Tanda Hackathon 2026 by [Matt](https://github.com/vetematts), [Edward Li](https://github.com/eli0118999), [Flynn Martschinke](https://github.com/flynnmartschinke) and [Harsha](https://github.com/hvarma029). Had fun? A ⭐ on the repo would make our day.
 
 ## How to play
 

@@ -2,8 +2,8 @@ import * as T from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
-  atBoard, atDesk, atShredder, atTray, cardIn, columnAt, columnX, days, furniture, heldCard, isDashing,
-  office, settings, staffInReach, traySpot,
+  atBoard, atDesk, atShredder, atTray, cardIn, columnAt, columnGap, columnX, days, furniture, heldCard, isDashing,
+  office, settings, staffInReach, traySpot, wantedBy,
   type Card, type Fx, type Npc, type Round,
 } from "./round";
 import type { Sound } from "./sound";
@@ -25,8 +25,15 @@ const playerColours = [
 ];
 const critterKinds = ["duck", "bunny", "cat", "frog"] as const;
 const boardY = 1.72;
-const boardZ = -5.36;
-const boardWidth = 15.4;
+// Room dimensions all derive from the rules' layout: the walls sit just outside the walkable bounds,
+// and the board hangs on the back wall a little behind the line players stand on.
+const { x: roomX, z: roomZ } = office.bounds;
+const boardZ = office.boardZ - 1.01;
+const boardMargin = 1.52;
+const boardWidth = 6 * columnGap + 2 * boardMargin;
+const boardPixels = Math.round(boardWidth * 133);
+const backWallZ = -(roomZ + .64);
+const sideWallX = roomX + .77;
 const boardHeight = 1.95;
 // Fredoka tops out at 700; the page loads it before the office is drawn
 const font = (weight: number, size: number) =>
@@ -136,7 +143,7 @@ function makeCritter(kind: Kind, look: typeof playerColours[number], parts: Part
 
   return {
     root, body, head, eyes, ears, arms, feet, ring, kind,
-    facing: 0, phase: 0, squash: 0, squashSpeed: 0, blinkAt: 1 + Math.random() * 3, dustAt: 0,
+    facing: 0, phase: 0, squash: 0, squashSpeed: 0, blinkAt: 1 + Math.random() * 3, dustAt: 0, boostAt: 0,
   };
 }
 
@@ -219,7 +226,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   renderer.toneMappingExposure = 1.04;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = touch ? T.PCFShadowMap : T.PCFSoftShadowMap;
-  renderer.domElement.setAttribute("aria-label", "3D office with a request tray, manager’s desk, pass counter, shredder, staff room and roster board");
+  renderer.domElement.setAttribute("aria-label", "3D office with a request tray, manager’s desk, pass counter, shredder and roster board");
   renderer.domElement.setAttribute("role", "img");
   host.appendChild(renderer.domElement);
 
@@ -238,7 +245,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   sun.position.set(-6, 15, 9);
   sun.castShadow = true;
   sun.shadow.mapSize.setScalar(touch ? 1024 : 2048);
-  Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 10, bottom: -10, near: 2, far: 40 });
+  Object.assign(sun.shadow.camera, { left: -(roomX + 3.75), right: roomX + 3.75, top: roomZ + 4.9, bottom: -(roomZ + 4.9), near: 2, far: 40 });
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -.0004;
   sun.shadow.normalBias = .035;
@@ -335,37 +342,47 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   }
 
   // Floor: a chunky island with soft checker tiles
-  rbox(scene, colours.baseShade, 0, -.62, 0, 20.5, .5, 12.2, .22).castShadow = false;
-  rbox(scene, colours.base, 0, -.26, 0, 20.3, .46, 12, .2).castShadow = false;
+  rbox(scene, colours.baseShade, 0, -.62, 0, 2 * roomX + 2, .5, 2 * roomZ + 2, .22).castShadow = false;
+  rbox(scene, colours.base, 0, -.26, 0, 2 * roomX + 1.8, .46, 2 * roomZ + 1.8, .2).castShadow = false;
   const tileGeometry = new RoundedBoxGeometry(.96, .12, .96, 2, .045);
   geometries.push(tileGeometry);
   const tileMaterial = new T.MeshStandardMaterial({ roughness: .86 });
   ownMaterials.push(tileMaterial);
-  const tiles = new T.InstancedMesh(tileGeometry, tileMaterial, 19 * 11);
+  // Odd counts keep a row of tiles centred on z = 0, where the back/front colours split
+  const tileCols = 2 * Math.floor(roomX) + 1;
+  const tileRows = 2 * Math.floor(roomZ) + 1;
+  const tileMid = (tileRows - 1) / 2;
+  const tiles = new T.InstancedMesh(tileGeometry, tileMaterial, tileCols * tileRows);
   tiles.receiveShadow = true;
   const matrix = new T.Matrix4();
   const tint = new T.Color();
-  for (let row = 0, i = 0; row < 11; row++) {
-    for (let col = 0; col < 19; col++, i++) {
-      const back = row < 5;
+  for (let row = 0, i = 0; row < tileRows; row++) {
+    for (let col = 0; col < tileCols; col++, i++) {
+      const back = row < tileMid;
       const set = back ? colours.tileBack : colours.tileFront;
-      tiles.setMatrixAt(i, matrix.makeTranslation(col - 9, -.02, row - 5));
+      tiles.setMatrixAt(i, matrix.makeTranslation(col - (tileCols - 1) / 2, -.02, row - tileMid));
       tiles.setColorAt(i, tint.setHex(set[(row + col) % 2]));
     }
   }
   scene.add(tiles);
-  const rug = rbox(scene, colours.rug, -3.5, .045, 3.35, 9.4, .04, 2.5, .02);
+  const rugLeft = office.tray.x - furniture.inbox.w / 2 - .35;
+  const rugRight = office.desk.x + furniture.desk.w / 2 + .35;
+  const rugX = (rugLeft + rugRight) / 2;
+  const rugWidth = rugRight - rugLeft;
+  const rugZ = (office.tray.z + office.desk.z) / 2 - .05;
+  const rug = rbox(scene, colours.rug, rugX, .045, rugZ, rugWidth, .04, 2.5, .02);
   rug.castShadow = false;
-  rbox(scene, 0xffe1e7, -3.5, .07, 3.35, 9, .02, 2.1, .01).castShadow = false;
+  rbox(scene, 0xffe1e7, rugX, .07, rugZ, rugWidth - .4, .02, 2.1, .01).castShadow = false;
 
   // Walls
-  rbox(scene, colours.wallLow, 0, .55, -5.74, 20.3, 1.1, .36, .1);
-  rbox(scene, colours.wallHigh, 0, 2.05, -5.8, 20.3, 1.95, .26, .1);
-  rbox(scene, colours.trim, 0, 3.06, -5.72, 20.5, .16, .46, .06);
-  rbox(scene, colours.trim, 0, 1.13, -5.55, 20.3, .08, .1, .03);
-  for (const x of [-10.02, 10.02]) {
-    rbox(scene, colours.wallLow, x, .48, -.12, .36, .96, 11.6, .12);
-    rbox(scene, colours.trim, x, .98, -.12, .5, .1, 11.7, .04);
+  const wallLength = 2 * roomX + 1.8;
+  rbox(scene, colours.wallLow, 0, .55, backWallZ, wallLength, 1.1, .36, .1);
+  rbox(scene, colours.wallHigh, 0, 2.05, backWallZ - .06, wallLength, 1.95, .26, .1);
+  rbox(scene, colours.trim, 0, 3.06, backWallZ + .02, wallLength + .2, .16, .46, .06);
+  rbox(scene, colours.trim, 0, 1.13, backWallZ + .19, wallLength, .08, .1, .03);
+  for (const x of [-sideWallX, sideWallX]) {
+    rbox(scene, colours.wallLow, x, .48, -.12, .36, .96, 2 * roomZ + 1.4, .12);
+    rbox(scene, colours.trim, x, .98, -.12, .5, .1, 2 * roomZ + 1.5, .04);
   }
 
   // Roster board
@@ -376,18 +393,18 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   });
   // The cork is painted once; the shift outlines are repainted when a round brings a different week
   const cork = document.createElement("canvas");
-  cork.width = 2048;
+  cork.width = boardPixels;
   cork.height = 260;
   {
     const pen = cork.getContext("2d")!;
     pen.fillStyle = colours.cork;
-    pen.fillRect(0, 0, 2048, 260);
-    for (let i = 0; i < 2600; i++) {
+    pen.fillRect(0, 0, boardPixels, 260);
+    for (let i = 0; i < boardPixels * 1.3; i++) {
       pen.fillStyle = i % 3 ? "rgba(150,90,40,.16)" : "rgba(255,240,210,.22)";
-      pen.fillRect(Math.random() * 2048, Math.random() * 260, 3, 3);
+      pen.fillRect(Math.random() * boardPixels, Math.random() * 260, 3, 3);
     }
   }
-  const boardTexture = paint(2048, 260, () => {});
+  const boardTexture = paint(boardPixels, 260, () => {});
   const boardCanvas = boardTexture.image as HTMLCanvasElement;
   let paintedWeek = "";
 
@@ -397,7 +414,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     if (key === paintedWeek) return;
     paintedWeek = key;
     const pen = boardCanvas.getContext("2d")!;
-    const sx = 2048 / boardWidth;
+    const sx = boardPixels / boardWidth;
     const sy = 260 / boardHeight;
     const px = (x: number) => (x + boardWidth / 2) * sx;
     const py = (y: number) => (boardHeight / 2 - (y - boardY)) * sy;
@@ -434,8 +451,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     });
     pen.font = font(900, 30);
     pen.fillStyle = "#6b3f1f";
-    pen.fillText("AM", px(-7.15), py(boardY + .22));
-    pen.fillText("PM", px(-7.15), py(boardY - .5));
+    pen.fillText("AM", px(columnX(0) - .97), py(boardY + .22));
+    pen.fillText("PM", px(columnX(0) - .97), py(boardY - .5));
     boardTexture.needsUpdate = true;
   }
   face(scene, boardTexture, 0, boardY, boardZ + .05, boardWidth, boardHeight);
@@ -456,7 +473,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   // Wall clock that follows the round timer, and a poster
   const clock = new T.Group();
-  clock.position.set(8.92, 1.95, boardZ + .02);
+  clock.position.set((boardWidth / 2 + roomX) / 2 + .1, 1.95, boardZ + .02);
   scene.add(clock);
   cylinder(clock, 0xff7a8a, 0, 0, 0, .62, .16, true).rotation.x = Math.PI / 2;
   const clockFace = face(clock, paint(256, 256, pen => {
@@ -481,7 +498,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   const clockRim = clock.children[0] as T.Mesh;
 
   const poster = new T.Group();
-  poster.position.set(-8.9, 1.95, boardZ + .02);
+  poster.position.set(-((boardWidth / 2 + roomX) / 2 + .1), 1.95, boardZ + .02);
   poster.rotation.z = .05;
   scene.add(poster);
   rbox(poster, colours.white, 0, 0, 0, 1.25, 1.55, .04, .03);
@@ -502,9 +519,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   }), 0, 0, .025, 1.13, 1.43);
 
   // String lights along the top of the wall
-  const lightCurve = new T.CatmullRomCurve3(Array.from({ length: 9 }, (_, i) => {
-    const x = -9.9 + i * 2.475;
-    return new T.Vector3(x, 2.92 - (i % 2 ? .28 : 0), -5.6);
+  const lightPoints = 2 * Math.round(roomX / 2.3) + 1;
+  const lightCurve = new T.CatmullRomCurve3(Array.from({ length: lightPoints }, (_, i) => {
+    const x = -(roomX + .65) + i * 2 * (roomX + .65) / (lightPoints - 1);
+    return new T.Vector3(x, 2.92 - (i % 2 ? .28 : 0), -(roomZ + .5));
   }));
   const wire = new T.TubeGeometry(lightCurve, 120, .015, 5, false);
   geometries.push(wire);
@@ -514,7 +532,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   geometries.push(bulbGeometry);
   const bulbMaterial = new T.MeshBasicMaterial({ toneMapped: false });
   ownMaterials.push(bulbMaterial);
-  const bulbCount = 26;
+  const bulbCount = Math.round(1.3 * (roomX + .65) * 2);
   const bulbs = new T.InstancedMesh(bulbGeometry, bulbMaterial, bulbCount);
   for (let i = 0; i < bulbCount; i++) {
     const point = lightCurve.getPointAt((i + .5) / bulbCount);
@@ -535,7 +553,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     rbox(scene, 0x7bbde0, x, .5, -.44, .9, .5, .02, .02).castShadow = false;
   }
   const pads = office.pass.map(point => rbox(scene, colours.pad, point.x, 1.02, point.z, 1.32, .055, .78, .025, true));
-  stationSign("PASS", "#fff27a", 3.45, 1.75, 0, .46);
+  stationSign("PASS", "#fff27a", office.counterRight - 1.65, 1.75, 0, .46);
 
   // Request inbox
   const inbox = new T.Group();
@@ -653,7 +671,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   // Exit door on the east wall: the Shift Snatcher sneaks in and runs out through here
   const door = new T.Group();
-  door.position.set(9.83, 0, office.exit.z);
+  door.position.set(roomX + .58, 0, office.exit.z);
   scene.add(door);
   rbox(door, 0x3b3350, .05, 1.0, 0, .1, 2.0, 1.2, .02).castShadow = false;
   for (const z of [-.68, .68]) rbox(door, colours.trim, 0, 1.05, z, .22, 2.2, .16, .05);
@@ -667,16 +685,6 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   rbox(scene, 0x5fe39a, office.exit.x - .35, .05, office.exit.z, 1.1, .03, 1.5, .01).castShadow = false;
   let doorOpen = .15;
   let doorKick = -10;
-
-  // Staff Room: a rug in the south-east corner, a sofa against its back edge and a sign
-  const staffRoom = office.staffRoom;
-  rbox(scene, 0xb9a6f0, staffRoom.x, .05, staffRoom.z, staffRoom.w, .04, staffRoom.d, .02).castShadow = false;
-  rbox(scene, 0xd9ccff, staffRoom.x, .075, staffRoom.z, staffRoom.w - .35, .02, staffRoom.d - .35, .01).castShadow = false;
-  const sofaZ = staffRoom.z - staffRoom.d / 2 + .3;
-  rbox(scene, 0xff9fb4, staffRoom.x - .3, .26, sofaZ, 1.7, .42, .62, .12);
-  rbox(scene, 0xff8aa6, staffRoom.x - .3, .62, sofaZ - .26, 1.7, .5, .16, .08);
-  for (const side of [-1, 1]) rbox(scene, 0xff8aa6, staffRoom.x - .3 + side * .88, .4, sofaZ, .16, .56, .62, .06);
-  stationSign("STAFF ROOM", "#d9ccff", staffRoom.x - .5, 1.75, staffRoom.z - staffRoom.d / 2 - .05, .5);
 
   // A phone on the desk that rings when someone calls in sick
   const phone = new T.Group();
@@ -751,7 +759,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         pen.textAlign = "left";
         pen.fillStyle = look.ink;
         pen.font = font(900, 46);
-        pen.fillText(name, 64, 143, card.approved ? 124 : 180);
+        pen.fillText(card.kind === "open" && !card.approved ? `for ${name}` : name, 64, 143, card.approved ? 124 : 180);
       } else {
         pen.fillStyle = look.soft;
         pen.font = font(900, 34);
@@ -806,11 +814,21 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     return cardObjects[id];
   }
 
-  // Staff in the Staff Room: small critters with a speech bubble listing the days they are free
+  // Employees: small critters wandering the office, with a name bubble that flashes when someone carries their open shift
   const cylinderGeometry = new T.CylinderGeometry(1, 1, 1, 24);
   geometries.push(cylinderGeometry);
   const skinTones = [0xffc8a8, 0xb8e1ff, 0xd7f5b0, 0xffe39a, 0xf2c4ff, 0xc9f1ec, 0xffd0e0, 0xe8d5ff];
   const hatTones = [0xff7aa8, 0xffa53d, 0x3ec7b4, 0x7a9cff, 0xb48cff];
+  // A soft vertical beam of light that marks the employee a carried open shift is waiting for
+  const beamGeometry = new T.CylinderGeometry(.7, .7, 2.8, 24, 1, true);
+  geometries.push(beamGeometry);
+  const beamTexture = paint(4, 64, pen => {
+    const fade = pen.createLinearGradient(0, 0, 0, 64);
+    fade.addColorStop(0, "rgba(255,255,255,0)");
+    fade.addColorStop(1, "rgba(255,255,255,1)");
+    pen.fillStyle = fade;
+    pen.fillRect(0, 0, 4, 64);
+  });
   function makeCrew() {
     const root = new T.Group();
     const body = new T.Group();
@@ -836,8 +854,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     const crown = parts.add(head, new T.Mesh(parts.sphere, hat), 0, .17, -.07, .33, .2, .31);
     const brim = parts.add(head, new T.Mesh(cylinderGeometry, hat), 0, .15, .2, .2, .025, .15);
     crown.castShadow = brim.castShadow = true;
-    ball(body, 0x7a6a8c, -.14, .06, .08, .1, .055, .14);
-    ball(body, 0x7a6a8c, .14, .06, .08, .1, .055, .14);
+    const feet = [-1, 1].map(side => ball(body, 0x7a6a8c, side * .14, .06, .08, .1, .055, .14));
     const tagSurface = new T.SpriteMaterial({ depthTest: false, depthWrite: false });
     ownMaterials.push(tagSurface);
     const tag = new T.Sprite(tagSurface);
@@ -852,26 +869,32 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     ring.scale.setScalar(.8);
     ring.visible = false;
     root.add(ring);
+    const beam = new T.Mesh(beamGeometry, new T.MeshBasicMaterial({
+      map: beamTexture, color: 0xffe066, transparent: true, opacity: .5, depthWrite: false, side: T.DoubleSide, toneMapped: false,
+    }));
+    ownMaterials.push(beam.material as T.Material);
+    beam.position.y = 1.4;
+    beam.visible = false;
+    root.add(beam);
     root.visible = false;
     scene.add(root);
-    return { root, body, head, tag, ring, skin, hat, key: "", bubble: "", born: -10, popped: -10, facing: 0 };
+    return { root, body, head, tag, ring, beam, feet, skin, hat, key: "", bubble: "", born: -10, popped: -10, facing: 0, phase: 0 };
   }
   const crew = new Map<number, ReturnType<typeof makeCrew>>();
   const bubbleTextures = new Map<string, T.Texture>();
 
-  function bubbleTexture(name: string, free: number[]) {
-    const key = `${name}|${free.join(",")}`;
+  function bubbleTexture(name: string, wanted: boolean) {
+    const key = `${name}|${wanted}`;
     const cached = bubbleTextures.get(key);
     if (cached) return cached;
     const texture = paint(340, 150, pen => {
-      pen.fillStyle = "#fffdf8";
-      pen.strokeStyle = "#8a7ab8";
-      pen.lineWidth = 6;
+      pen.fillStyle = wanted ? "#ffe45c" : "#fffdf8";
+      pen.strokeStyle = wanted ? "#e07b00" : "#8a7ab8";
+      pen.lineWidth = wanted ? 9 : 6;
       pen.beginPath();
       pen.roundRect(5, 5, 330, 114, 34);
       pen.fill();
       pen.stroke();
-      pen.fillStyle = "#fffdf8";
       pen.beginPath();
       pen.moveTo(150, 116);
       pen.lineTo(170, 146);
@@ -880,17 +903,18 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       pen.fillStyle = "#2a2433";
       pen.textAlign = "center";
       pen.textBaseline = "middle";
-      pen.font = font(900, 42);
-      pen.fillText(name, 170, 38, 300);
-      pen.fillStyle = "#3a7f9e";
-      pen.font = font(900, 34);
-      pen.fillText(free.map(day => days[day]).join(" · ") || "Busy", 170, 84, 310);
+      pen.font = font(900, 54);
+      if (wanted) {
+        pen.fillText(`❗ ${name}`, 170, 64, 300);
+      } else {
+        pen.fillText(name, 170, 64, 300);
+      }
     });
     bubbleTextures.set(key, texture);
     return texture;
   }
 
-  function crewFor(round: Round, npc: Extract<Npc, { kind: "staff" }>) {
+  function crewFor(round: Round, npc: Extract<Npc, { kind: "staff" }>, wanted: boolean) {
     let member = crew.get(npc.id);
     if (!member) {
       member = makeCrew();
@@ -905,10 +929,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       member.skin.color.setHex(skinTones[hash % skinTones.length]);
       member.hat.color.setHex(hatTones[hash % hatTones.length]);
     }
-    const bubble = `${name}|${npc.days.join(",")}`;
+    const bubble = `${name}|${wanted}`;
     if (member.bubble !== bubble) {
       member.bubble = bubble;
-      member.tag.material.map = bubbleTexture(name, npc.days);
+      member.tag.material.map = bubbleTexture(name, wanted);
       member.tag.material.needsUpdate = true;
     }
     return member;
@@ -1144,6 +1168,9 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     saved: sign("Saved!", "#9ac8ff"),
     busy: sign("Busy!", "#ffd35c"),
     chaos: sign("Chaos!", "#ff7a7a"),
+    warn: sign("Uh oh…", "#ffd35c"),
+    charge: sign("+⚡", "#fff27a"),
+    boost: sign("Boost!", "#ffb347"),
     win: sign("Week covered!", "#ffd35c"),
     lose: sign("Time’s up!", "#ff8fb0"),
   };
@@ -1166,12 +1193,75 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     item.sprite.visible = true;
   }
 
+  // Lightning pickups: a flat yellow bolt with a solid dark outline that always faces the camera, and a faint shadow
+  const boltPoints = [[.1, .62], [-.26, -.04], [-.04, -.04], [-.14, -.62], [.28, .08], [.06, .08], [.26, .62]];
+  const boltTexture = paint(160, 200, pen => {
+    pen.beginPath();
+    boltPoints.forEach(([bx, by], n) => {
+      const x = 80 + bx * 220;
+      const y = 100 - by * 145;
+      if (n === 0) pen.moveTo(x, y);
+      else pen.lineTo(x, y);
+    });
+    pen.closePath();
+    pen.lineJoin = "round";
+    pen.lineWidth = 16;
+    pen.strokeStyle = "#1b1240";
+    pen.stroke();
+    pen.fillStyle = "#ffd92e";
+    pen.fill();
+  });
+  const boltMaterial = new T.SpriteMaterial({ map: boltTexture, toneMapped: false });
+  ownMaterials.push(boltMaterial);
+  const bolts = Array.from({ length: 6 }, () => {
+    const group = new T.Group();
+    const sprite = new T.Sprite(boltMaterial);
+    sprite.scale.set(.96, 1.2, 1);
+    sprite.renderOrder = 4;
+    group.add(sprite);
+    const shadow = new T.Mesh(parts.circle, parts.shadowMaterial);
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = .04;
+    shadow.scale.set(.45, .3, 1);
+    group.add(shadow);
+    group.visible = false;
+    scene.add(group);
+    return { group, sprite, id: -1, seen: false };
+  });
+
+  function placeBolts(round: Round, now: number) {
+    const still = reducedMotion.matches;
+    bolts.forEach(entry => (entry.seen = false));
+    for (let n = 0; n < round.bolts.length; n++) {
+      const bolt = round.bolts[n];
+      let entry = bolts.find(item => item.id === bolt.id);
+      if (!entry) {
+        entry = bolts.find(item => item.id === -1);
+        if (!entry) continue;
+        entry.id = bolt.id;
+      }
+      entry.seen = true;
+      const age = Math.min(1, Math.max(0, (round.elapsed - bolt.born) / .4));
+      const pop = Math.max(.001, easeBack(age));
+      entry.group.visible = true;
+      entry.group.position.set(bolt.point.x, 0, bolt.point.z);
+      entry.group.scale.setScalar(pop);
+      entry.sprite.position.y = .95 + (still ? 0 : Math.sin(now * 3 + bolt.id) * .08);
+    }
+    bolts.forEach(entry => {
+      if (entry.seen) return;
+      entry.id = -1;
+      entry.group.visible = false;
+    });
+  }
+
   // Camera
   const camera = new T.PerspectiveCamera(30, 1, .5, 140);
   const focus = new T.Vector3(0, .5, .1);
-  const corners = [-10.3, 10.3].flatMap(x => [
+  const cornerX = roomX + 1.05;
+  const corners = [-cornerX, cornerX].flatMap(x => [
     // Front bottom edge of the island base, back floor corner, and the top of the back wall
-    new T.Vector3(x, -.9, 6.15), new T.Vector3(x, -.5, -6), new T.Vector3(x, 3.15, -5.9),
+    new T.Vector3(x, -.9, roomZ + 1.05), new T.Vector3(x, -.5, -(roomZ + .9)), new T.Vector3(x, 3.15, -(roomZ + .8)),
   ]);
   const ndc = new T.Vector3();
   const yaw = 0;
@@ -1193,7 +1283,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     const direction = new T.Vector3();
     const top = Math.min(.95, 1 - 2 * insetTop / height);
     const bottom = Math.max(touch && tall ? -.6 : touch ? -.9 : -.95, -1 + 2 * insetBottom / height);
-    const span = tall ? Math.max(4.2, 10.3 * aspect * .95) : Infinity;
+    const span = tall ? Math.max(4.2, cornerX * aspect * .95) : Infinity;
     // The room fits when it is narrow enough and its height on screen fits the band; centring comes after.
     const fits = (distance: number) => {
       camera.position.copy(focus).addScaledVector(direction, distance);
@@ -1256,7 +1346,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     }
     basePosition.copy(camera.position);
     const halfView = Math.tan(T.MathUtils.degToRad(camera.fov / 2)) * aspect * far;
-    maxPan = tall ? Math.max(0, 10.4 - halfView * .92) : 0;
+    maxPan = tall ? Math.max(0, cornerX + .1 - halfView * .92) : 0;
   }
 
   function size() {
@@ -1280,6 +1370,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
   const paperColours = [0xffffff, 0xe8eef8, 0xfff3d6];
   const starColours = [0xffe066, 0xfff6b0, 0xffffff];
+  const boltColours = [0xffe066, 0xfff27a, 0xffffff, 0xffb347];
+  const trailAt = { x: 0, y: 0, z: 0 };
 
   function slotAt(round: Round, event: Fx) {
     const card = event.card === undefined ? undefined : round.cards[event.card];
@@ -1385,6 +1477,28 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       case "dash":
         emit(puffs, { x, y: .15, z }, 3, { colours: [0xfff3e2], speed: .5, up: .3, gravity: 0, life: .4, size: .9 });
         break;
+      case "warn": {
+        const slot = slotAt(round, event);
+        const spot = slot === undefined ? { x, y: boardY } : slotOf(slot);
+        popup("warn", spot.x, 1.0, office.boardZ + .9, .8);
+        emit(puffs, { x: spot.x, y: spot.y, z: boardZ + .3 }, 4, { colours: [0xffd35c, 0xfff6e6], speed: .8, up: .6, gravity: 0, life: .5, size: .7 });
+        break;
+      }
+      case "bolt":
+        emit(confetti, { x, y: .8, z }, 8, { colours: boltColours, speed: 1.2, up: 2.4, gravity: 5, life: .7, size: .8 });
+        break;
+      case "charge":
+        squash(event.player, 5);
+        emit(confetti, { x, y: .9, z }, 22, { colours: boltColours, speed: 2.4, up: 3.4, gravity: 6, life: .9, size: .9 });
+        emit(puffs, { x, y: .8, z }, 5, { colours: [0xfff27a, 0xffffff], speed: 1, up: .8, gravity: 0, life: .5, size: .8 });
+        popup("charge", x, 2.9, z, .7);
+        break;
+      case "boost":
+        squash(event.player, 6);
+        emit(confetti, { x, y: .9, z }, 30, { colours: boltColours, speed: 3, up: 3.6, gravity: 6, life: 1, size: 1 });
+        emit(puffs, { x, y: .8, z }, 7, { colours: [0xffb347, 0xfff27a], speed: 1.3, up: .8, gravity: 0, life: .55, size: .9 });
+        popup("boost", x, 2.9, z, .85);
+        break;
       case "busy":
         break;
       case "chaos":
@@ -1415,6 +1529,10 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
         member.born = -10;
       });
       ringUntil = 0;
+      bolts.forEach(entry => {
+        entry.id = -1;
+        entry.group.visible = false;
+      });
     }
     for (const event of round.fx) {
       if (event.id <= lastFx) continue;
@@ -1429,6 +1547,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   const slotLit: number[] = Array.from({ length: 14 }, () => 0);
   const litPads = [false, false, false, false];
   const litStaff = new Set<number>();
+  const wantedStaff = new Set<number>();
   const lit = { tray: false, desk: false, shredder: false };
 
   function placeCards(round: Round, now: number, dt: number) {
@@ -1510,6 +1629,17 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       const wobble = shaking < .45 && !still ? Math.sin(shaking * 55) * .22 * (1 - shaking / .45) : 0;
       const hop = shaking < .45 && !still ? Math.sin(shaking / .45 * Math.PI) * .25 : 0;
       entry.group.position.y += hop;
+      // A doomed card on the board shakes harder and faster as its cancellation nears
+      let doom = 0;
+      if (card.doomedAt !== undefined && at.place === "board") {
+        doom = T.MathUtils.clamp(1 - (card.doomedAt - round.elapsed) / settings.cancelWarning, 0, 1);
+        if (!still) {
+          const rate = 18 + doom * 30;
+          roll += Math.sin(now * rate + id) * (.04 + doom * .2);
+          entry.group.position.x += Math.sin(now * rate * 1.3) * (.01 + doom * .035);
+          entry.group.position.y += Math.abs(Math.sin(now * rate * .7)) * doom * .03;
+        }
+      }
       entry.group.rotation.set(-tilt, yaw, roll + wobble);
       const bounce = Math.min(1, (now - entry.popped) / .35);
       const pop = bounce < 1 ? easeBack(bounce) : 1;
@@ -1520,6 +1650,9 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
       if (cancelled) {
         entry.surface.emissive.setHex(0xff2a3a);
         entry.surface.emissiveIntensity = .1 + pulse * .45;
+      } else if (doom > 0) {
+        entry.surface.emissive.setHex(0xff2a3a);
+        entry.surface.emissiveIntensity = still ? doom * .3 : doom * (.1 + (.5 + Math.sin(now * (6 + doom * 22)) * .5) * .45);
       } else if (litCards.has(id)) {
         entry.surface.emissive.copy(highlightColour);
         entry.surface.emissiveIntensity = .3 + Math.sin(now * 7) * .12;
@@ -1534,35 +1667,51 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     crew.forEach(member => (member.root.visible = false));
     round.npcs.forEach(npc => {
       if (npc.kind !== "staff") return;
-      const member = crewFor(round, npc);
+      const wanted = wantedStaff.has(npc.id);
+      const member = crewFor(round, npc, wanted);
       if (member.born < 0) member.born = now;
       member.root.visible = true;
       member.root.position.set(npc.point.x, .07, npc.point.z);
-      // Look at the nearest helper, otherwise face the camera
-      let facing = -.25;
-      let nearest = 3.2;
-      round.players.forEach(player => {
-        const dx = player.position.x - npc.point.x;
-        const dz = player.position.z - npc.point.z;
-        const distance = Math.hypot(dx, dz);
-        if (distance < nearest) {
-          nearest = distance;
-          facing = Math.atan2(dx, dz);
-        }
-      });
-      let turnBy = facing - member.facing;
+      let turnBy = npc.facing - member.facing;
       turnBy = Math.atan2(Math.sin(turnBy), Math.cos(turnBy));
       member.facing += turnBy * (1 - Math.exp(-dt * 8));
       member.root.rotation.y = member.facing;
-      member.body.position.y = still ? 0 : Math.max(0, Math.sin(now * 2.4 + npc.id * 2)) * .05;
+      const walking = npc.moving && round.phase === "playing";
+      if (walking) member.phase += dt * 9;
+      const step = member.phase;
+      member.body.position.y = still ? 0 : walking ? Math.abs(Math.sin(step)) * .09 : Math.max(0, Math.sin(now * 2.4 + npc.id * 2)) * .05;
+      member.body.rotation.z = walking && !still ? Math.sin(step) * .12 : 0;
       member.head.rotation.z = still ? 0 : Math.sin(now * 2 + npc.id) * .06;
+      member.feet.forEach((foot, side) => {
+        const swing = walking ? Math.sin(step + side * Math.PI) : 0;
+        foot.position.z = .08 + swing * .12;
+        foot.position.y = .06 + Math.max(0, swing) * .06;
+      });
       const spawn = Math.min(1, Math.max(0, (now - member.born) / .4));
       const bounce = Math.min(1, (now - member.popped) / .4);
       const pop = (spawn < 1 ? easeBack(spawn) : 1) * (bounce < 1 ? 1 + Math.sin(bounce * Math.PI) * .25 : 1);
       member.root.scale.setScalar(.95 * Math.max(.001, pop));
       const glowing = litStaff.has(npc.id);
-      member.ring.visible = glowing;
-      if (glowing) member.ring.scale.setScalar(.8 + Math.sin(now * 7) * .05);
+      const beat = still ? 0 : Math.sin(now * 9);
+      member.ring.visible = glowing || wanted;
+      if (wanted) {
+        member.ring.scale.setScalar(1.25 + beat * .12);
+        (member.ring.material as T.MeshBasicMaterial).color.setHex(beat > 0 ? 0xffe066 : 0xff9a3c);
+      } else if (glowing) {
+        member.ring.scale.setScalar(.8 + Math.sin(now * 7) * .05);
+        (member.ring.material as T.MeshBasicMaterial).color.setHex(0xffe066);
+      }
+      member.beam.visible = wanted;
+      if (wanted) {
+        const surface = member.beam.material as T.MeshBasicMaterial;
+        surface.opacity = .4 + (beat * .5 + .5) * .3;
+        member.beam.rotation.y = now * 2;
+      }
+      // The bubble pulses in size while someone is looking for them
+      const bubbleScale = wanted && !still ? 1.15 + beat * .12 : 1;
+      member.tag.scale.set(1.7 * bubbleScale, .75 * bubbleScale, 1);
+      member.tag.position.y = wanted ? 2.2 + (still ? 0 : Math.abs(Math.sin(now * 6)) * .12) : 2.15;
+      member.tag.material.color.setHex(wanted && beat < 0 ? 0xfff0b0 : 0xffffff);
     });
   }
 
@@ -1617,6 +1766,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
   function highlight(round: Round, now: number) {
     litCards.clear();
     litStaff.clear();
+    wantedStaff.clear();
     slotLit.fill(0);
     litPads.fill(false);
     lit.tray = lit.desk = lit.shredder = false;
@@ -1643,6 +1793,8 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
           }
           return;
         }
+        const wanted = wantedBy(round, card);
+        if (wanted) wantedStaff.add(wanted.id);
         if (card.kind === "request" && !card.approved && atDesk(position)) lit.desk = true;
         if (atShredder(position)) lit.shredder = true;
         if (card.kind === "open" && !card.approved) {
@@ -1684,6 +1836,7 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
     highlight(round, now);
     placeSnatcher(round, now, dt);
     placeStaff(round, now, dt);
+    placeBolts(round, now);
     placeCards(round, now, dt);
 
     // Ring ring
@@ -1757,6 +1910,14 @@ export function createOfficeWorld(host: HTMLDivElement, sound?: Sound) {
 
       if (isDashing(round, i) && !still) {
         emit(puffs, { x: player.position.x, y: .25, z: player.position.z }, 2, { colours: [0xffffff, 0xfff3e2], speed: .35, up: .2, gravity: 0, life: .35, size: 1.1 });
+      }
+      if (round.elapsed < player.boostUntil && !still && now > critter.boostAt && round.phase === "playing") {
+        critter.boostAt = now + (moving ? .04 : .12);
+        const back = critter.facing + Math.PI;
+        trailAt.x = player.position.x + Math.sin(back) * .35 + (Math.random() - .5) * .3;
+        trailAt.y = .25 + Math.random() * .7;
+        trailAt.z = player.position.z + Math.cos(back) * .35 + (Math.random() - .5) * .3;
+        emit(puffs, trailAt, 1, { colours: boltColours, speed: moving ? .2 : .5, up: .3, gravity: 0, life: .4, size: .75 });
       }
       if (moving && !still && now > critter.dustAt) {
         critter.dustAt = now + .16;

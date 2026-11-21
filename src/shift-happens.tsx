@@ -3,11 +3,11 @@ import { createOfficeWorld } from "./office-world";
 import {
   beginRound, cardIn, dash, days, dropCarried, ensurePlayers, filledShifts, heldCard, interact, neededShifts, newRound, nextAction, roleIn, roster,
   sampleTeam, settings, shiftLabel, shifts, stageAt, stepRound, stopStamp, templates, walk,
-  type CardKind, type Round, type Stage, type Team,
+  type Round, type Stage, type Team,
 } from "./round";
 import { copyTeam, loadTeam, saveTeam, TeamSetup } from "./team-setup";
 import PhoneController from "./phone-controller";
-import { cardColours, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
+import { cardColours, cardText, critters, joinUrl, makeRoomCode, openLink, readJoin, relayUrl, wakeRelay, wantsLocalLink, type Link, type Message } from "./phone-link";
 import { PlayQr, playUrl, QrCode } from "./play-qr";
 import { createSound, type Sound } from "./sound";
 
@@ -18,7 +18,6 @@ const keyboards = [
 const swapKey = "KeyQ";
 const gameKeys = [...keyboards.flatMap(({ up, left, down, right, use, dash }) => [up, left, down, right, use, ...dash]), swapKey];
 const player2Keys = [keyboards[1].up, keyboards[1].left, keyboards[1].down, keyboards[1].right, keyboards[1].use, ...keyboards[1].dash];
-const kindNames: Record<CardKind, string> = { request: "Request", open: "Open shift", cancelled: "Cancelled" };
 const stageNames: Record<Stage, string> = { calm: "Calm", busy: "Busy!", chaos: "Chaos!" };
 const stageStart: Record<Stage, number> = { calm: 0, busy: settings.busyAt, chaos: settings.chaosAt };
 /** How fast the background music plays in each stage (1 is normal). */
@@ -42,7 +41,9 @@ const tips = [
   "Hold the action key at the Manager’s Desk to stamp a request, then pass it over the counter.",
   "Pin a stamped request on the Roster Board under the day it asks for.",
   "A red cancelled card goes in the Shredder. That opens a yellow shift.",
-  "Take open shifts to the Staff Room and give them to someone who is free that day.",
+  "A yellow open shift is for one employee. Their bubble flashes: chase them down and hand it over.",
+  "A wobbling card is about to be cancelled.",
+  "Grab ⚡ to recharge your dash, or for a speed boost when you’re full.",
   "Dash into the Shift Snatcher to make it drop the cards it stole.",
   "Playing alone? Press Q to swap between the critters.",
   "Roster my team works for cafés, clinics, salons or anything with shifts.",
@@ -98,7 +99,9 @@ function snapshot(round: Round) {
         } : null,
         stamp: player.stamping ? (card?.stamp ?? 0) / settings.stampTime : 0,
         stamping: player.stamping,
-        dashReady: round.elapsed >= player.dashReady,
+        charges: player.charges,
+        regenIn: player.charges < settings.dashCharges ? Math.max(0, player.nextCharge - round.elapsed) : 0,
+        boosted: round.elapsed < player.boostUntil,
         prompt: player.messageUntil > round.elapsed ? player.message : nextAction(round, i),
       };
     }),
@@ -117,10 +120,18 @@ function awardWinners(stats: View["stats"]) {
 }
 type HeldCard = View["players"][number]["card"];
 
+function Pips({ charges }: { charges: number }) {
+  return (
+    <span className="pips" role="img" aria-label={`${charges} of ${settings.dashCharges} dashes`}>
+      {Array.from({ length: settings.dashCharges }, (_, i) => <i key={i} data-on={i < charges}>⚡</i>)}
+    </span>
+  );
+}
+
 function CardChip({ card }: { card: NonNullable<HeldCard> }) {
   return (
     <span className="person-chip" data-kind={card.kind} style={{ "--role": cardColours[card.kind] } as CSSProperties}>
-      {kindNames[card.kind]} · {days[card.day]}{card.worker ? ` · ${card.worker}` : ""}{card.approved ? " ✓" : ""}
+      {cardText(card, days)}
     </span>
   );
 }
@@ -547,7 +558,8 @@ function Game() {
           const player = latest.players[i];
           phoneLink.current!.send({
             t: "status", phase: state.phase, prompt: player?.prompt ?? "", card: player?.card ?? null, stage: latest.stage,
-            stamping: player?.stamping ?? false, stamp: player?.stamp ?? 0, dashReady: player?.dashReady ?? true,
+            stamping: player?.stamping ?? false, stamp: player?.stamp ?? 0,
+            charges: player?.charges ?? settings.dashCharges, regenIn: player?.regenIn ?? 0, boosted: player?.boosted ?? false,
             time: latest.time, filled: latest.filled, needed: latest.needed, news: latest.news,
             countdown, stats: latest.stats[i],
             awards: awarded.filter(award => award.winners.includes(i)).map(award => award.title),
@@ -762,7 +774,7 @@ function Game() {
   );
 
   return (
-    <main className={`sh${urgent ? " sh--urgent" : ""}${playing ? " sh--playing" : ""}`}>
+    <main className={`sh${urgent ? " sh--urgent" : ""}${playing ? " sh--playing" : ""}`} data-stage={playing ? view.stage : undefined}>
       <section className="stage" aria-label="Office">
         <div className="stage-canvas" ref={host} tabIndex={0} />
 
@@ -828,7 +840,7 @@ function Game() {
                       {phone ? "📱 phone" : keyed >= 0 ? (
                         <><kbd>{keyboards[keyed].guide}</kbd> <kbd>{keyboards[keyed].action}</kbd> <kbd>{keyboards[keyed].dashGuide}</kbd>{keyed === 0 && swapTo !== lead && <> <kbd>Q</kbd> swap</>}</>
                       ) : "not on keyboard"}
-                      <i className="pad-dash" data-ready={player.dashReady} title={player.dashReady ? "Dash ready" : "Dash recharging"}>⚡</i>
+                      <Pips charges={player.charges} />{player.boosted && <b className="boost-tag">BOOST</b>}
                     </div>
                     <p className="pad-prompt">
                       {player.card && <CardChip card={player.card} />}
@@ -856,7 +868,7 @@ function Game() {
               </button>
               {solo.card && <CardChip card={solo.card} />}
               <div className="touch-buttons">
-                <button type="button" className="touch-dash" data-ready={solo.dashReady} onPointerDown={dashDown}>Dash</button>
+                <button type="button" className="touch-dash" data-ready={solo.charges > 0} onPointerDown={dashDown}>Dash <Pips charges={solo.charges} /></button>
                 <button type="button" className="touch-action" onPointerDown={actionDown} onLostPointerCapture={() => release("Space")}
                   onPointerUp={() => release("Space")}>
                   {solo.stamping ? "Stamping…" : solo.prompt}
@@ -897,8 +909,9 @@ function Game() {
                 <ol className="how">
                   <li><span aria-hidden="true">📨</span><b>Request</b><small>Grab it from the tray, hold the action key at the Manager’s Desk to stamp it, pass it over the counter, then pin it on its day.</small></li>
                   <li><span aria-hidden="true">🗑️</span><b>Cancelled</b><small>Pull the red card off the board and feed it to the Shredder. A yellow open shift appears.</small></li>
-                  <li><span aria-hidden="true">🟡</span><b>Open shift</b><small>Take it to the Staff Room, give it to someone free that day, then pin it.</small></li>
+                  <li><span aria-hidden="true">🟡</span><b>Open shift</b><small>It’s for one employee: their bubble flashes. Chase them down, hand it over, then pin it.</small></li>
                   <li><span aria-hidden="true">🐔</span><b>Shift Snatcher</b><small>The bin chicken nicks pinned cards. Dash into it to make it drop them.</small></li>
+                  <li><span aria-hidden="true">⚡</span><b>Dash charges</b><small>Grab ⚡ to recharge your dash, or for a speed boost when you’re full. A wobbling card is about to be cancelled.</small></li>
                 </ol>
                 <table className="how-table">
                   <thead><tr><th scope="col">Player</th><th scope="col">Move</th><th scope="col">Action</th><th scope="col">Dash</th></tr></thead>

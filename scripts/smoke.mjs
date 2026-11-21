@@ -165,6 +165,19 @@ await shot("6-busy-cancel");
 await sleep(2500);
 await shot("7-snatcher");
 console.log("busy text:", await text());
+// Hand P1 a yellow open shift for one of the wandering employees: their bubble should flash.
+console.log("chase:", await evaluate(`(() => {
+  const r = shiftHappens.round();
+  const p = r.players[0];
+  if (p.holding !== undefined) r.cards[p.holding].at = { place: "gone" };
+  const npc = r.npcs.find(n => n.kind === "staff");
+  const id = r.cards.length;
+  r.cards.push({ id, kind: "open", day: 4, worker: npc.person, approved: false, stamp: 0, at: { place: "hand", player: 0 }, born: r.elapsed });
+  p.holding = id;
+  return "for " + r.staff[npc.person].name + " · bolts on floor: " + r.bolts.length + " · P1 charges: " + p.charges;
+})()`));
+await sleep(900);
+await shot("7b-yellow-chase");
 await jump(79.5);
 await sleep(1500);
 await shot("8-chaos");

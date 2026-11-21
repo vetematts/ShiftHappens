@@ -4,7 +4,7 @@
  * The players are helper critters living *inside* a rostering system. Employees send shift requests in;
  * the helpers move those request cards through the system: the Request Tray (inbox), the Manager's Desk
  * (approval stamp), across the counter, onto the Roster Board. Cancellations, open shifts that need cover
- * from the Staff Room, and a card-stealing Shift Snatcher keep un-filling the week.
+ * from the wandering employee they are for, and a card-stealing Shift Snatcher keep un-filling the week.
  *
  * Everything the UI and the 3D office need lives in `Round`. One-off moments (a pin, a "nope", a snatch)
  * are pushed onto `round.fx` so the renderer and sound can react without diffing state.
@@ -189,26 +189,50 @@ export const settings = {
   /** Seconds between new Shift Requests, for 2 players. More players spawn faster. */
   spawnEvery: { calm: 3.4, busy: 2.8, chaos: 2.2 } as Record<Stage, number>,
   /** Seconds between cancellations (none while calm). */
-  cancelEvery: { calm: Infinity, busy: 14, chaos: 9 } as Record<Stage, number>,
+  cancelEvery: { calm: Infinity, busy: 22, chaos: 18 } as Record<Stage, number>,
+  /** Cancellations per round at most, so the board can still build up. */
+  maxCancels: 4,
+  /** A freshly pinned card can't be cancelled for this many seconds. */
+  cancelGrace: 12,
+  /** No cancellations until at least this many shifts are covered. */
+  cancelFrom: 4,
+  /** A card wobbles on the board for this long before it turns red. */
+  cancelWarning: 3,
   /** Seconds between Shift Snatcher visits (none while calm). */
   snatcherEvery: { calm: Infinity, busy: 16, chaos: 10 } as Record<Stage, number>,
-  snatcherSpeed: { calm: 2.4, busy: 2.4, chaos: 3.4 } as Record<Stage, number>,
+  snatcherSpeed: { calm: 2.6, busy: 2.6, chaos: 3.5 } as Record<Stage, number>,
   /** How long the Snatcher is dazed after a dash knocks it. */
   snatcherDaze: .9,
   /** How close a dashing player must get to knock the Snatcher. */
   knockReach: 1.05,
-  speed: 6.4,
+  speed: 8.0,
   dashSpeed: 16,
   dashTime: .16,
-  dashCooldown: 1,
+  dashCooldown: .35,
+  /** Dash charges per critter. One refills on its own every `dashRegen` seconds; ⚡ pickups refill one at once. */
+  dashCharges: 3,
+  dashRegen: 9,
+  /** ⚡ pickups on the floor: a new one every few seconds (at most `maxBolts` lying around). */
+  boltEvery: { min: 12, max: 18 },
+  maxBolts: 1,
+  boltReach: .8,
+  /** Grabbing a ⚡ with full charges gives a speed boost instead. */
+  boostTime: 4,
+  boostSpeed: 1.35,
   reach: 1.45,
   /** How far from the edge of a station (tray, desk, shredder) a player can still use it. */
   stationReach: 1,
   /** Collision radius of a player, close to the size of the drawn critters. */
   body: .42,
-  /** Staff waiting in the Staff Room to accept open shifts, and how many days each is free. */
-  staffInRoom: 3,
-  staffFreeDays: 3,
+  /** Employees wandering the office. Each yellow open shift is for one of them: chase them down to hand it over. */
+  staffCount: 3,
+  staffSpeed: 1.5,
+  /** After crossing the room, the chance an employee stops for a moment (otherwise they set off again). */
+  staffPauseChance: .08,
+  /** Employees are solid: their body radius, and how close you must be to feel crowded (and slowed). */
+  staffBody: .38,
+  crowdReach: 1.15,
+  crowdSpeed: .65,
   maxPlayers: 4,
   /** Seconds a news message stays up before a queued one can replace it, so each can be read. */
   newsMinimum: 3,
@@ -217,35 +241,33 @@ export const settings = {
 };
 
 /** Board columns, one per day, centred on the office. */
-export const columnGap = 2.06;
+export const columnGap = 2.5;
 export const columnX = (day: number) => (day - 3) * columnGap;
 
 export type Point = { x: number; z: number };
 
 /**
- * The office floor runs x −9.25…9.25 (west → east) and z −5.1…5.1 (north/back wall → south/front).
- * The camera looks from the south. A counter splits the room along z = 0 from the west wall to x = 5.1,
+ * The office floor runs x −11.5…11.5 (west → east) and z −6.6…6.6 (north/back wall → south/front).
+ * The camera looks from the south. A counter splits the room along z = 0 from the west wall to x = 6.4,
  * leaving a walkable gap on the east side.
  *
  *   North half (back):  Roster Board along the back wall · Shredder (west) · Exit door (east wall)
- *   South half (front): Request Tray (west) · Manager's Desk (middle) · Staff Room (south-east corner)
+ *   South half (front): Request Tray (west) · Manager's Desk (middle)
+ *   Employees roam the whole office end to end, using the gap to switch halves.
  */
 export const office = {
-  bounds: { x: 9.25, z: 5.1 },
-  counterRight: 5.1,
+  bounds: { x: 11.5, z: 6.6 },
+  counterRight: 6.4,
   counterDepth: .48,
-  tray: { x: -6.4, z: 3.4 },
-  desk: { x: -.55, z: 3.4 },
-  boardZ: -4.35,
-  pass: [-4.7, -2.6, -.5, 1.6].map(x => ({ x, z: 0 })),
+  tray: { x: -8.0, z: 4.4 },
+  desk: { x: -.7, z: 4.4 },
+  /** The line players stand on to reach the Roster Board, which hangs on the back wall behind it. */
+  boardZ: -5.85,
+  pass: [-6.0, -3.0, 0, 3.0].map(x => ({ x, z: 0 })),
   /** The door the Shift Snatcher sneaks in from and runs out of, on the east wall. */
-  exit: { x: 8.85, z: -3.3 },
-  /** The Staff Room zone (centre and size) where staff NPCs wait. */
-  staffRoom: { x: 7.7, z: 3.7, w: 3.1, d: 2.8 },
-  /** Where each staff NPC stands in the Staff Room. */
-  staffSpots: [{ x: 6.7, z: 4.25 }, { x: 8.0, z: 4.35 }, { x: 8.35, z: 2.95 }],
+  exit: { x: 11.1, z: -4.3 },
   /** Where players start, by player index. */
-  spawns: [{ x: -5.3, z: 2.05 }, { x: -.5, z: -1.3 }, { x: 2.8, z: 2.05 }, { x: -4.0, z: -1.6 }],
+  spawns: [{ x: -6.6, z: 2.6 }, { x: -.6, z: -1.7 }, { x: 3.5, z: 2.6 }, { x: -5.0, z: -2.1 }],
 };
 
 /** A solid piece of furniture: centre plus full width (x) and depth (z). */
@@ -255,11 +277,11 @@ export type Block = Point & { w: number; d: number };
 export const furniture = {
   inbox: { ...office.tray, w: 3.3, d: 1.5 },
   desk: { ...office.desk, w: 3.5, d: 1.2 },
-  shredder: { x: -8.85, z: -2.1, w: .9, d: 1.0 },
-  plants: [{ x: -9.05, z: -4.75, size: 1 }, { x: 9.05, z: -4.75, size: 1.1 }, { x: 9.1, z: 4.75, size: .9 }]
+  shredder: { x: -11.05, z: -2.7, w: .9, d: 1.0 },
+  plants: [{ x: -11.3, z: -6.25, size: 1 }, { x: 11.3, z: -6.25, size: 1.1 }, { x: 11.35, z: 6.25, size: .9 }]
     .map(({ x, z, size }) => ({ x, z, w: .8 * size, d: .8 * size, size })),
-  cooler: { x: -9.05, z: 4.7, w: .6, d: .6 },
-  coffee: { x: 9.1, z: -.95, w: .7, d: 1.3 },
+  cooler: { x: -11.3, z: 6.2, w: .6, d: .6 },
+  coffee: { x: 11.35, z: -1.3, w: .7, d: 1.3 },
 };
 
 const blocks: Block[] = [
@@ -294,7 +316,7 @@ export function slotFloor(slot: number): Point {
 
 /**
  * request:   blue — an employee asked for a shift on `day`. Needs the manager's stamp.
- * open:      yellow — a shift on `day` with nobody on it. A staff NPC in the Staff Room must accept it.
+ * open:      yellow — a shift on `day` with nobody on it. The wandering employee in `worker` must be caught and handed it.
  * cancelled: red — a pinned shift whose worker cancelled. Pull it off the board and shred it.
  */
 export type CardKind = "request" | "open" | "cancelled";
@@ -316,21 +338,42 @@ export type Card = {
   day: number;
   /** Index into `round.staff` of the employee on the card. Open shifts have none until a staff member accepts. */
   worker?: number;
-  /** Stamped at the desk (requests) or accepted in the Staff Room (open shifts). */
+  /** Stamped at the desk (requests) or handed to their employee (open shifts). */
   approved: boolean;
   /** Seconds of stamping so far, 0…settings.stampTime. */
   stamp: number;
   at: CardPlace;
   /** round.elapsed when the card appeared, for spawn animations. */
   born: number;
+  /** round.elapsed when the card was last pinned on the board. */
+  pinnedAt?: number;
+  /** While set, the pinned card is wobbling and turns red (cancelled) at this round.elapsed. */
+  doomedAt?: number;
 };
 
 /** An employee in the system. `id` is their index in `round.staff`. */
 export type Staff = Person & { id: number };
 
 export type Npc =
-  /** A staff member waiting in the Staff Room. Their speech bubble shows the days they are free. */
-  | { kind: "staff"; id: number; person: number; point: Point; days: number[] }
+  /**
+   * An employee strolling from one end of the office to the other. They are solid and slow players who brush
+   * past. A yellow open shift names one of them (`card.worker`); their bubble flashes while it's carried.
+   */
+  | {
+    kind: "staff";
+    id: number;
+    /** Index into `round.staff`. */
+    person: number;
+    point: Point;
+    facing: number;
+    /** The rest of their walk, via the counter gap when they change halves. The last point is where they're headed. */
+    path: Point[];
+    /** When they set off again after a pause. */
+    waitUntil: number;
+    /** Seconds without progress; past a limit they pick somewhere else to go. */
+    stuck: number;
+    moving: boolean;
+  }
   /** The bin chicken that steals pinned cards and runs for the exit. */
   | {
     kind: "snatcher";
@@ -357,9 +400,18 @@ export type Player = {
   messageUntil: number;
   /** round.elapsed until which the player is dashing. */
   dashUntil: number;
-  /** round.elapsed from which the player may dash again. */
+  /** round.elapsed from which the player may dash again (a short cooldown between charges). */
   dashReady: number;
+  /** Dash charges left (0…settings.dashCharges). */
+  charges: number;
+  /** round.elapsed when the next charge refills on its own (Infinity when full). */
+  nextCharge: number;
+  /** round.elapsed until which a ⚡ speed boost lasts. */
+  boostUntil: number;
 };
+
+/** A ⚡ lying on the floor. Walk over it to pick it up. */
+export type Bolt = { id: number; point: Point; born: number };
 
 /** What each critter did this round, for the awards on the end screen and the phones. */
 export type Stats = { pinned: number; stamped: number; passed: number; shredded: number; accepted: number; rescues: number };
@@ -367,7 +419,8 @@ const noStats = (): Stats => ({ pinned: 0, stamped: 0, passed: 0, shredded: 0, a
 
 export type FxKind =
   | "spawn" | "pick" | "put" | "stamp" | "pin" | "nope" | "cancel" | "shred" | "open" | "accept"
-  | "snatch" | "knock" | "rescue" | "escape" | "dash" | "busy" | "chaos" | "win" | "lose";
+  | "snatch" | "knock" | "rescue" | "escape" | "dash" | "busy" | "chaos" | "win" | "lose"
+  | "warn" | "bolt" | "charge" | "boost";
 
 /** A one-off moment for the renderer and sound. `id` only ever increases within a round. */
 export type Fx = { id: number; kind: FxKind; x: number; z: number; player?: number; card?: number };
@@ -378,6 +431,8 @@ export type Round = {
   stage: Stage;
   nextSpawn: number;
   nextCancel: number;
+  /** Cancellations so far this round. */
+  cancels: number;
   nextSnatch: number;
   /** Which of the 14 slots the week needs. */
   needed: boolean[];
@@ -395,6 +450,9 @@ export type Round = {
   openQueue: number[];
   players: Player[];
   npcs: Npc[];
+  bolts: Bolt[];
+  nextBolt: number;
+  boltSeq: number;
   stats: Stats[];
   fx: Fx[];
   fxSeq: number;
@@ -454,7 +512,7 @@ export function columnAt(point: Point) {
 }
 
 export function atBoard(point: Point) {
-  return point.z <= office.boardZ + settings.reach && Math.abs(point.x) <= 7.8;
+  return point.z <= office.boardZ + settings.reach && Math.abs(point.x) <= columnX(6) + columnGap * .7;
 }
 
 export const atDesk = (point: Point) => nearStation(point, furniture.desk);
@@ -509,6 +567,7 @@ function makePlayer(index: number): Player {
   return {
     position: { ...office.spawns[index] }, facing: index % 2 ? Math.PI : 0, moving: false, stamping: false,
     message: "", messageUntil: 0, dashUntil: 0, dashReady: 0,
+    charges: settings.dashCharges, nextCharge: Infinity, boostUntil: 0,
   };
 }
 
@@ -521,17 +580,40 @@ const shuffle = <T,>(list: T[]) => {
   return copy;
 };
 
-function freeDays(person: Person) {
-  const available = days.map((_, i) => i).filter(i => person.days[i]);
-  const pool = available.length >= settings.staffFreeDays ? available : days.map((_, i) => i);
-  return shuffle(pool).slice(0, settings.staffFreeDays).sort((a, b) => a - b);
+/** Somewhere across the office from `from` for an employee to walk to, on either half. */
+function farSpot(from: Point): Point {
+  const { x: wide, z: deep } = office.bounds;
+  for (let tries = 0; tries < 60; tries++) {
+    // Always the far end: the opposite side of the room from where they are now
+    const end = -Math.sign(from.x || (Math.random() - .5));
+    const point = { x: end * (wide * .45 + Math.random() * (wide * .55 - 1)), z: office.boardZ + 1 + Math.random() * (deep - office.boardZ - 1.8) };
+    if (walkable(point, settings.staffBody)) return point;
+  }
+  return { x: -Math.sign(from.x || 1) * (wide - 2), z: from.z };
+}
+
+/** The walk to `to`: straight there, or round through the counter gap when it's on the other half. */
+function routeTo(from: Point, to: Point): Point[] {
+  const side = (point: Point) => Math.sign(point.z);
+  const blocked = (point: Point) => point.x < office.counterRight + 1;
+  if (side(from) === side(to) || (!blocked(from) && !blocked(to))) return [to];
+  const gapX = (office.counterRight + office.bounds.x) / 2 - .4;
+  return [{ x: gapX, z: side(from) * 1.6 }, { x: gapX, z: side(to) * 1.6 }, to];
+}
+
+/** Starting spots spread along the room, alternating halves, clear of where the players start. */
+function startSpot(index: number, count: number): Point {
+  const x = -office.bounds.x + 2 + (index + .5) * (office.bounds.x * 2 - 4) / Math.max(1, count);
+  const spot = { x, z: index % 2 ? -3.4 : 1.6 };
+  const crowded = office.spawns.some(start => Math.hypot(start.x - spot.x, start.z - spot.z) < 2);
+  return crowded ? { x: x + 2.2, z: spot.z } : spot;
 }
 
 /** A fresh round. `players` is how many helper critters are in the office (2–4). */
 export function newRound(team: Team = sampleTeam, custom = false, players = 2): Round {
   const people = team.people.length ? team.people : sampleTeam.people;
   const staff = people.map((person, id) => ({ ...person, days: [...person.days], id }));
-  const roomStaff = shuffle(staff.map(person => person.id)).slice(0, settings.staffInRoom);
+  const wanderers = shuffle(staff.map(person => person.id)).slice(0, settings.staffCount);
   const count = Math.max(minPlayers, Math.min(maxPlayers, Math.floor(players) || minPlayers));
   // One card per shift: a shift is needed when the team needs anyone on it.
   const places = slotsOf(team);
@@ -542,6 +624,7 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     stage: "calm",
     nextSpawn: 0,
     nextCancel: settings.busyAt + 4,
+    cancels: 0,
     nextSnatch: settings.busyAt + 8,
     needed: slotRoles.map(role => role !== null),
     roles: team.roles.map(entry => ({ ...entry })),
@@ -552,10 +635,16 @@ export function newRound(team: Team = sampleTeam, custom = false, players = 2): 
     board: shifts.map(() => undefined),
     openQueue: [],
     players: Array.from({ length: count }, (_, i) => makePlayer(i)),
-    npcs: roomStaff.map((person, i) => ({
-      kind: "staff" as const, id: i, person, point: { ...office.staffSpots[i % office.staffSpots.length] },
-      days: freeDays(staff[person]),
-    })),
+    npcs: wanderers.map((person, i) => {
+      const point = startSpot(i, wanderers.length);
+      return {
+        kind: "staff" as const, id: i, person, point, facing: 0, path: routeTo(point, farSpot(point)),
+        waitUntil: Math.random(), stuck: 0, moving: false,
+      };
+    }),
+    bolts: [],
+    nextBolt: 10,
+    boltSeq: 0,
     stats: Array.from({ length: count }, noStats),
     fx: [],
     fxSeq: 0,
@@ -680,38 +769,154 @@ function placeOpenShifts(round: Round) {
     const seat = freeSeat(round);
     if (seat === undefined) return;
     const day = round.openQueue.shift()!;
-    const card = makeCard(round, "open", day, { place: "tray", seat });
+    const card = makeCard(round, "open", day, { place: "tray", seat }, coverFor(round));
     fx(round, "open", traySpot(seat), { card: card.id });
   }
 }
 
-/** Make sure some staff member in the Staff Room is free on every day that has an open shift. */
-function keepStaffRoomUseful(round: Round) {
-  const staff = round.npcs.filter((npc): npc is Extract<Npc, { kind: "staff" }> => npc.kind === "staff");
-  if (!staff.length) return;
-  const openDays = new Set(round.cards.filter(card => live(card) && card.kind === "open" && !card.approved).map(card => card.day));
-  round.openQueue.forEach(day => openDays.add(day));
-  openDays.forEach(day => {
-    if (staff.some(npc => npc.days.includes(day))) return;
-    const npc = staff[Math.floor(Math.random() * staff.length)];
-    npc.days[Math.floor(Math.random() * npc.days.length)] = day;
-    npc.days = [...new Set(npc.days)].sort((a, b) => a - b);
+type Wanderer = Extract<Npc, { kind: "staff" }>;
+const wanderers = (round: Round) => round.npcs.filter((npc): npc is Wanderer => npc.kind === "staff");
+const nameOf = (round: Round, person: number | undefined) =>
+  (person === undefined ? undefined : round.staff[person]?.name) ?? "them";
+
+/** Which wandering employee a new open shift is for: preferably someone no other open shift is waiting on. */
+function coverFor(round: Round) {
+  const people = wanderers(round).map(npc => npc.person);
+  if (!people.length) return undefined;
+  const waiting = new Set(round.cards.filter(card => live(card) && card.kind === "open" && !card.approved).map(card => card.worker));
+  const free = people.filter(person => !waiting.has(person));
+  const pool = free.length ? free : people;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** Employees walk from one end of the office to the other, rarely stopping, and step round furniture and players. */
+function stepStaff(round: Round, seconds: number) {
+  const people = wanderers(round);
+  people.forEach(npc => {
+    npc.moving = false;
+    if (round.elapsed < npc.waitUntil) return;
+    if (!npc.path.length) npc.path = routeTo(npc.point, farSpot(npc.point));
+    const goal = npc.path[0];
+    const dx = goal.x - npc.point.x;
+    const dz = goal.z - npc.point.z;
+    const length = Math.hypot(dx, dz);
+    if (length < .1) {
+      npc.path.shift();
+      if (!npc.path.length) {
+        npc.path = routeTo(npc.point, farSpot(npc.point));
+        if (Math.random() < settings.staffPauseChance) npc.waitUntil = round.elapsed + .8 + Math.random() * .7;
+      }
+      return;
+    }
+    const step = Math.min(length, settings.staffSpeed * seconds);
+    const ux = dx / length * step;
+    const uz = dz / length * step;
+    // Like players, they never step closer to someone they're touching, but can always step away
+    const roomFrom = (other: Point, next: Point, gap: number) => {
+      const after = Math.hypot(other.x - next.x, other.z - next.z);
+      return after >= gap || after > Math.hypot(other.x - npc.point.x, other.z - npc.point.z);
+    };
+    const free = (next: Point) => walkable(next, settings.staffBody)
+      && round.players.every(player => roomFrom(player.position, next, settings.body + settings.staffBody + .05))
+      && people.every(other => other === npc || roomFrom(other.point, next, settings.staffBody * 2));
+    // Straight on if possible, otherwise slide along whatever is in the way
+    const options = [{ x: npc.point.x + ux, z: npc.point.z + uz }, { x: npc.point.x + ux, z: npc.point.z }, { x: npc.point.x, z: npc.point.z + uz }];
+    const next = options.find(free);
+    npc.facing = Math.atan2(dx, dz);
+    if (!next) {
+      npc.stuck += seconds;
+      if (npc.stuck > 1.2) {
+        npc.stuck = 0;
+        npc.path = routeTo(npc.point, farSpot(npc.point));
+      }
+      return;
+    }
+    const progress = Math.hypot(next.x - npc.point.x, next.z - npc.point.z);
+    npc.stuck = progress < step * .3 ? npc.stuck + seconds : 0;
+    if (npc.stuck > 1.2) {
+      npc.stuck = 0;
+      npc.path = routeTo(npc.point, farSpot(npc.point));
+    }
+    npc.point = next;
+    npc.moving = true;
   });
 }
 
+/** ⚡ pickups appear on open floor every few seconds; walking over one refills a dash charge or gives a boost. */
+function stepBolts(round: Round) {
+  if (round.elapsed >= round.nextBolt) {
+    const { min, max } = settings.boltEvery;
+    round.nextBolt = round.elapsed + min + Math.random() * (max - min);
+    if (round.bolts.length < settings.maxBolts) {
+      for (let tries = 0; tries < 40; tries++) {
+        const point = { x: (Math.random() * 2 - 1) * (office.bounds.x - 1), z: (Math.random() * 2 - 1) * (office.bounds.z - .8) };
+        const clear = walkable(point, .6)
+          && point.z > office.boardZ + 1.6
+          && [furniture.inbox, furniture.desk, furniture.shredder].every(block => edgeDistance(point, block) > 1.3)
+          && round.players.every(player => Math.hypot(player.position.x - point.x, player.position.z - point.z) > 2)
+          && round.bolts.every(bolt => Math.hypot(bolt.point.x - point.x, bolt.point.z - point.z) > 3);
+        if (!clear) continue;
+        round.bolts.push({ id: ++round.boltSeq, point, born: round.elapsed });
+        fx(round, "bolt", point);
+        break;
+      }
+    }
+  }
+  round.players.forEach((player, i) => {
+    // Charges refill slowly on their own
+    if (player.charges < settings.dashCharges && round.elapsed >= player.nextCharge) {
+      player.charges++;
+      player.nextCharge = player.charges < settings.dashCharges ? round.elapsed + settings.dashRegen : Infinity;
+    }
+    const index = round.bolts.findIndex(bolt =>
+      Math.hypot(bolt.point.x - player.position.x, bolt.point.z - player.position.z) <= settings.boltReach);
+    if (index === -1) return;
+    const [bolt] = round.bolts.splice(index, 1);
+    if (player.charges < settings.dashCharges) {
+      player.charges++;
+      if (player.charges >= settings.dashCharges) player.nextCharge = Infinity;
+      fx(round, "charge", bolt.point, { player: i });
+    } else {
+      player.boostUntil = round.elapsed + settings.boostTime;
+      fx(round, "boost", bolt.point, { player: i });
+    }
+  });
+}
+
+/** Cancels one pinned shift. Returns false when now isn't a fair time, so the caller can try again soon. */
 function cancelShift(round: Round) {
+  if (round.cancels >= settings.maxCancels) return true;
+  // One red card at a time, and only once the board has some shifts on it
+  if (round.board.some(id => id !== undefined && (round.cards[id].kind === "cancelled" || round.cards[id].doomedAt !== undefined))) return false;
   const snatcher = round.npcs.find(npc => npc.kind === "snatcher");
+  const covers = round.board.filter((_, slot) => covered(round, slot)).length;
+  if (covers < settings.cancelFrom) return false;
   const filled = round.board.map((_, slot) => slot).filter(slot => covered(round, slot)
-    && !(snatcher?.kind === "snatcher" && snatcher.target === slot));
-  if (filled.length < 2) return;
+    && !(snatcher?.kind === "snatcher" && snatcher.target === slot)
+    && round.elapsed - (cardIn(round, slot)!.pinnedAt ?? -Infinity) >= settings.cancelGrace);
+  if (!filled.length) return false;
   const slot = filled[Math.floor(Math.random() * filled.length)];
   const card = cardIn(round, slot)!;
-  card.kind = "cancelled";
-  card.approved = false;
-  const who = card.worker === undefined ? "Someone" : round.staff[card.worker].name;
-  // A little longer on screen than other news, so there's time to enjoy the excuse
-  announce(round, `${who} can't make ${shifts[slot].label}: ${nextExcuse(round)} Shred the red card!`, 6);
-  fx(round, "cancel", slotFloor(slot), { card: card.id });
+  // Telegraph it: the card wobbles for a few seconds, then turns red
+  card.doomedAt = round.elapsed + settings.cancelWarning;
+  fx(round, "warn", slotFloor(slot), { card: card.id });
+  round.cancels++;
+  return true;
+}
+
+/** Wobbling cards whose time is up turn red. */
+function stepDoomed(round: Round) {
+  round.board.forEach((id, slot) => {
+    const card = id === undefined ? undefined : round.cards[id];
+    if (!card || card.doomedAt === undefined || round.elapsed < card.doomedAt) return;
+    card.doomedAt = undefined;
+    card.kind = "cancelled";
+    card.approved = false;
+    const who = card.worker === undefined ? "Someone" : round.staff[card.worker].name;
+    // A little longer on screen than other news, so there's time to enjoy the excuse
+    announce(round, `${who} can't make ${shifts[slot].label}: ${nextExcuse(round)} Shred the red card!`, 6);
+    fx(round, "cancel", slotFloor(slot), { card: card.id });
+  });
 }
 
 function spawnSnatcher(round: Round) {
@@ -784,6 +989,7 @@ function stepSnatcher(round: Round, seconds: number) {
       const card = cardIn(round, chicken.target)!;
       round.board[chicken.target] = undefined;
       card.at = { place: "snatcher" };
+      card.doomedAt = undefined;
       chicken.card = card.id;
       chicken.state = "flee";
       announce(round, `The Snatcher grabbed ${shifts[chicken.target].label}! Dash into it!`, 4, true);
@@ -853,14 +1059,16 @@ export function stepRound(round: Round, seconds: number) {
     round.nextSpawn = round.elapsed + spawnInterval(round);
   }
   if (round.elapsed >= round.nextCancel) {
-    cancelShift(round);
-    round.nextCancel = round.elapsed + settings.cancelEvery[round.stage];
+    // If it isn't a fair moment to cancel, look again in a couple of seconds rather than skipping a whole interval
+    round.nextCancel = round.elapsed + (cancelShift(round) ? settings.cancelEvery[round.stage] : 2);
   }
   if (round.elapsed >= round.nextSnatch) {
     spawnSnatcher(round);
     round.nextSnatch = round.elapsed + settings.snatcherEvery[round.stage];
   }
-  keepStaffRoomUseful(round);
+  stepDoomed(round);
+  stepStaff(round, seconds);
+  stepBolts(round);
   stepSnatcher(round, seconds);
 
   round.players.forEach((player, i) => {
@@ -885,8 +1093,7 @@ export function stepRound(round: Round, seconds: number) {
 // Movement
 // ---------------------------------------------------------------------------------------------------------------
 
-function walkable(point: Point) {
-  const { body } = settings;
+function walkable(point: Point, body = settings.body) {
   return Math.abs(point.x) <= office.bounds.x
     && Math.abs(point.z) <= office.bounds.z
     && (point.x > office.counterRight + body || Math.abs(point.z) > office.counterDepth + body)
@@ -910,14 +1117,24 @@ export function walk(round: Round, index: number, dx: number, dz: number, second
   }
   if (!length) return;
   const { position } = player;
-  const speed = (dashing ? settings.dashSpeed : settings.speed) * seconds / length;
+  const people = wanderers(round);
+  const crowded = people.some(npc => Math.hypot(npc.point.x - position.x, npc.point.z - position.z) < settings.crowdReach);
+  const pace = dashing ? settings.dashSpeed
+    : settings.speed * (round.elapsed < player.boostUntil ? settings.boostSpeed : 1) * (crowded ? settings.crowdSpeed : 1);
+  const speed = pace * seconds / length;
   const x = position.x + dx * speed;
   const z = position.z + dz * speed;
-  if (walkable({ x, z: position.z })) {
+  // Employees are solid: a step may not bring you closer to someone you're already touching
+  const touching = settings.body + settings.staffBody;
+  const clear = (point: Point) => people.every(npc => {
+    const after = Math.hypot(npc.point.x - point.x, npc.point.z - point.z);
+    return after >= touching || after >= Math.hypot(npc.point.x - position.x, npc.point.z - position.z);
+  });
+  if (walkable({ x, z: position.z }) && clear({ x, z: position.z })) {
     player.moving = player.moving || x !== position.x;
     position.x = x;
   }
-  if (walkable({ x: position.x, z })) {
+  if (walkable({ x: position.x, z }) && clear({ x: position.x, z })) {
     player.moving = player.moving || z !== position.z;
     position.z = z;
   }
@@ -929,6 +1146,12 @@ export function walk(round: Round, index: number, dx: number, dz: number, second
 export function dash(round: Round, index: number) {
   const player = round.players[index];
   if (!player || round.phase !== "playing" || round.elapsed < player.dashReady) return;
+  if (player.charges <= 0) {
+    notify(round, player, "Out of dash! Grab a ⚡ or wait for it to recharge.");
+    return;
+  }
+  player.charges--;
+  if (player.nextCharge === Infinity) player.nextCharge = round.elapsed + settings.dashRegen;
   player.dashUntil = round.elapsed + settings.dashTime;
   player.dashReady = round.elapsed + settings.dashCooldown;
   stopStamp(round, index);
@@ -980,20 +1203,25 @@ function cancelledAt(round: Round, point: Point) {
   return [day, day + 7].find(slot => cardIn(round, slot)?.kind === "cancelled");
 }
 
-/** The staff NPC in reach of this point. With a `day`, someone free that day wins over someone nearer. */
-export function staffInReach(round: Round, point: Point, day?: number) {
-  const score = (npc: Extract<Npc, { kind: "staff" }>, distance: number) =>
-    distance + (day !== undefined && !npc.days.includes(day) ? 100 : 0);
-  return round.npcs.map(npc => (npc.kind === "staff" ? { npc, distance: Math.hypot(npc.point.x - point.x, npc.point.z - point.z) } : undefined))
-    .filter(entry => entry !== undefined && entry.distance <= settings.reach)
-    .sort((a, b) => score(a!.npc, a!.distance) - score(b!.npc, b!.distance))[0]?.npc;
+/** The employee in reach of this point. With a `person`, that employee wins over anyone nearer. */
+export function staffInReach(round: Round, point: Point, person?: number) {
+  const score = (npc: Wanderer, distance: number) => distance + (person !== undefined && npc.person !== person ? 100 : 0);
+  return wanderers(round).map(npc => ({ npc, distance: Math.hypot(npc.point.x - point.x, npc.point.z - point.z) }))
+    .filter(entry => entry.distance <= settings.reach)
+    .sort((a, b) => score(a.npc, a.distance) - score(b.npc, b.distance))[0]?.npc;
+}
+
+/** The wandering employee a yellow open shift is waiting for, if any. Their bubble flashes while it's carried. */
+export function wantedBy(round: Round, card: Card | undefined) {
+  if (!card || card.kind !== "open" || card.approved || card.worker === undefined) return undefined;
+  return wanderers(round).find(npc => npc.person === card.worker);
 }
 
 /** Where on the board this card can go from this point, or why not. */
 function pinTarget(round: Round, point: Point, card: Card): { slot: number } | { why: string } {
   const day = columnAt(point);
   if (card.kind === "cancelled") return { why: "Cancelled cards go in the shredder" };
-  if (!card.approved) return { why: card.kind === "open" ? "Get a staff member to accept it first" : "Stamp it at the desk first" };
+  if (!card.approved) return { why: card.kind === "open" ? `Find ${nameOf(round, card.worker)} first` : "Stamp it at the desk first" };
   if (card.day !== day) return { why: `That's a ${days[card.day]} shift, not ${days[day]}` };
   const slot = [day, day + 7].find(slot => round.needed[slot] && round.board[slot] === undefined);
   if (slot === undefined) {
@@ -1001,6 +1229,13 @@ function pinTarget(round: Round, point: Point, card: Card): { slot: number } | {
     return { why: blocked ? `Pull the red card off ${days[day]} first` : `${days[day]} is full` };
   }
   return { slot };
+}
+
+/** Why the desk won't stamp this card, and where it goes instead. */
+function deskHint(card: Card) {
+  if (card.kind === "cancelled") return "No stamp for cancelled cards: shred it";
+  if (card.approved) return `Already approved: pin it on ${days[card.day]}`;
+  return "Open shifts skip the stamp: find the flashing employee";
 }
 
 /** A short hint for what the action button will do right now. */
@@ -1021,19 +1256,19 @@ export function nextAction(round: Round, index: number) {
     return "slot" in target ? `Pin to ${shifts[target.slot].label}` : target.why;
   }
   if (atShredder(position)) return card.kind === "cancelled" ? "Shred it" : "Shred (bin this card)";
-  if (card.kind === "request" && !card.approved && atDesk(position)) return "Hold to stamp";
+  if (atDesk(position)) return card.kind === "request" && !card.approved ? "Hold to stamp" : deskHint(card);
   if (card.kind === "open" && !card.approved) {
-    const npc = staffInReach(round, position, card.day);
+    const npc = staffInReach(round, position, card.worker);
     if (npc) {
-      const name = round.staff[npc.person].name;
-      return npc.days.includes(card.day) ? `Offer to ${name}` : `${name} isn't free ${days[card.day]}`;
+      const name = nameOf(round, npc.person);
+      return npc.person === card.worker ? `Give it to ${name}` : `Not ${name}: find ${nameOf(round, card.worker)}`;
     }
   }
   if (card.kind !== "cancelled" && atTray(position) && freeSeat(round) !== undefined) return "Put back";
   if (passInReach(round, position, true) !== undefined) return "Pass over";
   if (passInReach(round, position, false) !== undefined) return "Counter full";
   if (card.kind === "cancelled") return "Take it to the shredder";
-  if (card.kind === "open" && !card.approved) return "Take it to the staff room";
+  if (card.kind === "open" && !card.approved) return `Chase down ${nameOf(round, card.worker)}`;
   if (!card.approved) return "Take it to the desk";
   return `Pin it on ${days[card.day]}`;
 }
@@ -1076,6 +1311,7 @@ export function interact(round: Round, index: number) {
     }
     round.board[target.slot] = card.id;
     card.at = { place: "board", slot: target.slot };
+    card.pinnedAt = round.elapsed;
     player.holding = undefined;
     round.stats[index].pinned++;
     fx(round, "pin", slotFloor(target.slot), { player: index, card: card.id });
@@ -1093,24 +1329,28 @@ export function interact(round: Round, index: number) {
     return;
   }
 
-  if (card.kind === "request" && !card.approved && atDesk(position)) {
-    player.stamping = true;
+  if (atDesk(position)) {
+    if (card.kind === "request" && !card.approved) {
+      player.stamping = true;
+      return;
+    }
+    // Never drop a card at the desk by accident: say where it goes instead
+    notify(round, player, `${deskHint(card)}.`);
+    fx(round, "nope", position, { player: index, card: card.id });
     return;
   }
 
   if (card.kind === "open" && !card.approved) {
-    const npc = staffInReach(round, position, card.day);
+    const npc = staffInReach(round, position, card.worker);
     if (npc) {
-      const name = round.staff[npc.person].name;
-      if (!npc.days.includes(card.day)) {
-        notify(round, player, `${name} isn't free ${days[card.day]}.`);
+      if (npc.person !== card.worker) {
+        notify(round, player, `That's ${nameOf(round, npc.person)}. This one's for ${nameOf(round, card.worker)}.`);
         fx(round, "nope", npc.point, { player: index, card: card.id });
         return;
       }
       card.approved = true;
-      card.worker = npc.person;
-      npc.days = npc.days.filter(day => day !== card.day);
-      if (!npc.days.length) npc.days = freeDays(round.staff[npc.person]);
+      // They stop for a moment to take it
+        npc.waitUntil = round.elapsed + .8;
       round.stats[index].accepted++;
       fx(round, "accept", npc.point, { player: index, card: card.id });
       return;
